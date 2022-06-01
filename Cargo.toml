@@ -1,0 +1,20 @@
+[package]
+name             = "maxicp-rs"
+version          = "0.1.0"
+edition          = "2021"
+
+description      = "A fast lean and clean modern constraint programming solver implementation (in rust)"
+repository       = "https://github.com/xgillard/maxicp-rs"
+categories       = ["science", "mathematics", "algorithms"]
+keywords         = ["constraint", "solver", "combinatorial", "optimization", "cp"]
+license          = "MIT"
+readme           = "README.md"
+
+# Add your name (or maybe use an institutional account)
+authors          = ["Xavier Gillard <xavier.gillard@uclouvain.be>"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.57"
+thiserror = "1.0.31"
