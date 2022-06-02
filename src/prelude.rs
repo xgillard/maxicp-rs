@@ -15,3 +15,5 @@
 
 //! This is the maxicp prelude. It includes all the maxicp related traits and
 //! structures you are likely to always want to use when working with maxicp-rs.
+
+pub use crate::state::*;

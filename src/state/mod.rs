@@ -16,7 +16,6 @@
 //! The state module comprises all traits and datastructures related to
 //! the state management. Typically, this accounts for the reversible integer 
 //! (stateint) and its associated trail mechanism.
-//! 
 
 use crate::utils::Int;
 
@@ -59,3 +58,8 @@ impl <X> StateInt for X where X:State, X::Inner: Int {}
 /// Automatically implement the StateBool trait for all types that are `State`
 /// and have an `Inner` type which is a boolean 
 impl <X> StateBool for X where X: State<Inner=bool> {}
+
+/// The state manager is in charge of storing and restoring the data from 
+/// and to the trail
+mod manager;
+pub use manager::*;
