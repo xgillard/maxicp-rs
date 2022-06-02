@@ -1,56 +1,63 @@
-// 
+//
 // maxicp-rs is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Lesser General Public License  v3
 // as published by the Free Software Foundation.
-// 
+//
 // mini-cp is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY.
 // See the GNU Lesser General Public License  for more details.
-// 
+//
 // You should have received a copy of the GNU Lesser General Public License
 // along with mini-cp. If not, see http://www.gnu.org/licenses/lgpl-3.0.en.html
-// 
+//
 // Copyright (c)  2022 by X. Gillard
-// 
+//
 
 //! This module contains utilities that allows one to be generic over primitive
 //! integer types. An alternative to defining these types would have been to
-//! simply use the `num-traits` crate. This, was however decided against in 
+//! simply use the `num-traits` crate. This, was however decided against in
 //! order to reduce the compilation time of maxicp-rs
-//! 
+//!
 
-use std::{ops::{Add, Sub, AddAssign, SubAssign}, hash::Hash};
+use std::{
+    hash::Hash,
+    ops::{Add, AddAssign, Sub, SubAssign},
+};
 
 /// This type encapsulates a primitive int
-pub trait Int : 
-    Sized            + 
-    Copy             + 
-    Clone            +  
-    Eq               +
-    PartialEq        +
-    Add<Output=Self> +
-    AddAssign        + 
-    Sub<Output=Self> + 
-    SubAssign        +
-    Ord              + 
-    PartialOrd       +
-    Hash             + 
-    private::Sealed  // we don't want you to implement the type Int
+pub trait Int:
+    Sized
+    + Copy
+    + Clone
+    + Eq
+    + PartialEq
+    + Add<Output = Self>
+    + AddAssign
+    + Sub<Output = Self>
+    + SubAssign
+    + Ord
+    + PartialOrd
+    + Hash
+    + private::Sealed // we don't want you to implement the type Int
 {
     /// Returns the zero of this type
     fn zero() -> Self;
     /// Returns the one value of this type
-    fn one()  -> Self;
+    fn one() -> Self;
 }
 
 /// This macro generates an implementation of the Int trait for the given type $t
 macro_rules! int {
     ($t: ty) => {
         impl Int for $t {
-            fn zero() -> $t { 0 }
-            fn one()  -> $t { 1 }
+            fn zero() -> $t {
+                0
+            }
+            fn one() -> $t {
+                1
+            }
         }
-    }
+    };
 }
 
 // unsigned
@@ -79,7 +86,7 @@ mod private {
 
     macro_rules! sealed {
         ($t: ty) => {
-            impl Sealed for $t {}       
+            impl Sealed for $t {}
         };
     }
 
