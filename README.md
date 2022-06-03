@@ -16,9 +16,9 @@ maxicp (https://pschaus.github.io/maxicp/).
 ## Roadmap
 * [ ] State
     * [X] Implement a trailing mechanism (maybe simpify to only keep one type of signed / unsigned)
+    * [X] Implement reversible sparse set
     * [ ] Implement fast and efficient bitsets (see smallbitset)
     * [ ] Implement reversible interval
-    * [ ] Implement reversible sparse set
     * [ ] Implement reversible bitset
     * [ ] Implement reversible lazy sparse set (interval that might become a sparse set)
 	* [ ] Implement reversible tri partition

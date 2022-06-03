@@ -21,4 +21,3 @@
 /// and to the trail
 mod manager;
 pub use manager::*;
-
