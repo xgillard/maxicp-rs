@@ -18,36 +18,94 @@
 
 use std::ops::Not;
 
-use crate::utils::Int;
 
-/// The identifier of managed boolean resource
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ReversibleBool(Reversible);
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//~~~~ MANAGED RESOURCES ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 /// The identifier of managed integer resource
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ReversibleInt(Reversible);
+pub struct ReversibleInt(usize);
+
+/// The identifier of managed boolean resource
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ReversibleBool(ReversibleInt);
 
 /// The identifier of managed integer resource
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ReversibleSparseSet(usize);
 
-/// A richer structure that represents the non primitive things that are tracked
-/// by a simple manager
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//~~~~ TRAIL DATA ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+/// This structure keeps track of the information about one given level: the 
+/// length of its trail and the count of each kind of resources that are managed 
+/// by the state manager
 #[derive(Debug, Clone, Copy, Default)]
-struct RichLayer {
+struct Level {
+    /// the length of the trail at the moment this layer was started
+    trail_size: usize,
+
+    /// how many integers have already been recorded ? (note: booleans are 
+    /// simply mqpped onto integers)
+    integers: usize,
+
     /// how many sparse sets have already been recorded ?
     sparse_sets: usize,
     /// length of the sparse sets data
     sparse_set_data: usize,
 }
 
-/// A simple state manager that can manage booleans, integers, sparse sets
+
+/// An entry that is used to save/restore data from the trail
+#[derive(Debug, Clone, Copy)]
+enum TrailEntry {
+    /// An entry related to the restoration of an integer value
+    IntEntry(IntState),
+}
+
+/// The state of an integer that can be saved and restored
+#[derive(Debug, Clone, Copy)]
+struct IntState {
+    /// The identifier of the managed resource
+    id: ReversibleInt,
+    /// At what 'time' was this data modified to the point where it needed being saved ?
+    ///
+    /// # Note:
+    /// This data was referred to as 'magic' in minicp and maxicp. Still I like to
+    /// convey the idea that 'magic' is actually a monotonic clock  indicating the validity
+    /// timestamp of the data.
+    clock: usize,
+    /// The value that will be restored in the managed data
+    value: isize,
+}
+
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//~~~~ STATE MANAGER ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+/// A simple state manager that can manage booleans, integers, sparse sets, 
+/// intervals, lazy sparse sets .. and so on (basically any reversible data 
+/// structure ends up being managed by this struct)
 #[derive(Debug, Clone)]
-pub struct SimpleManager {
-    /// A "low level" state manager which is used to deal with the "primitive"
-    /// data types
-    delegate: StateManager<isize>,
+pub struct StateManager {
+    /// At what 'time' was this data modified to the point where it needed being saved ?
+    ///
+    /// # Note:
+    /// This data was referred to as 'magic' in minicp and maxicp. Still I like to
+    /// convey the idea that 'magic' is actually a monotonic clock  indicating the validity
+    /// timestamp of the data.
+    clock: usize,
+    /// The previous values that are saved on the trail
+    trail: Vec<TrailEntry>,
+    /// Some book keeping to track what needs and what doesn't need
+    /// to be restored upon manager `pop`
+    levels: Vec<Level>,
+
+    /// The current value of the various managed data
+    integers: Vec<IntState>,
 
     /// Holds the metadata about sparse sets
     sparse_sets: Vec<SparseSet>,
@@ -55,27 +113,28 @@ pub struct SimpleManager {
     sparse_set_data: Vec<usize>,
     /// Holds the indices of the data in a sparse set
     sparse_set_idx: Vec<usize>,
-
-    /// Some additional bookkeeping data to keep track of the richer structures
-    /// that have been built on top of the raw state manager
-    layers: Vec<RichLayer>,
 }
-impl Default for SimpleManager {
+impl Default for StateManager {
     fn default() -> Self {
         Self::new()
     }
 }
-impl SimpleManager {
+impl StateManager {
     /// Creates a new SimpleManager
     pub fn new() -> Self {
         Self {
-            delegate: StateManager::new(),
+            clock: 0,
+            trail: vec![],
+
+            integers: vec![],
 
             sparse_sets: vec![],
             sparse_set_data: vec![],
             sparse_set_idx: vec![],
 
-            layers: vec![RichLayer {
+            levels: vec![Level {
+                trail_size: 0,
+                integers: 0,
                 sparse_sets: 0,
                 sparse_set_data: 0,
             }],
@@ -83,76 +142,112 @@ impl SimpleManager {
     }
     /// Saves the current state
     pub fn push(&mut self) {
-        self.delegate.push();
+        self.clock += 1;
 
         // additional book keeping
-        self.layers.push(RichLayer {
+        self.levels.push(Level {
+            trail_size: self.trail.len(),
+            
+            integers: self.integers.len(),
+
             sparse_sets: self.sparse_sets.len(),
             sparse_set_data: self.sparse_set_data.len(),
         })
     }
     /// Restores the previous state
     pub fn pop(&mut self) {
-        self.delegate.pop();
+        let level = self.levels.pop()
+            .expect("cannot pop above the root level of the state manager");
 
-        // additional book keeping
-        let layer = self.layers.pop().expect("cannot pop above the first push");
-        self.sparse_sets.truncate(layer.sparse_sets);
-        self.sparse_set_data.truncate(layer.sparse_set_data);
+        // restore whatever needs to be restored
+        for e in self.trail.iter().skip(level.trail_size).rev().copied() {
+            match e {
+                TrailEntry::IntEntry(state) => 
+                    self.integers[state.id.0] = state,
+            }
+        }
+        // drop stale trail entry
+        self.trail.truncate(level.trail_size);
+
+        // integers book keeping
+        self.integers.truncate(level.integers);
+
+        // sparse set book keeping
+        self.sparse_sets.truncate(level.sparse_sets);
+        self.sparse_set_data.truncate(level.sparse_set_data);
     }
 }
 //------------------------------------------------------------------------------
 // Bool management
 //------------------------------------------------------------------------------
-impl SimpleManager {
+impl StateManager {
     /// creates a new managed boolean
     pub fn manage_bool(&mut self, v: bool) -> ReversibleBool {
-        ReversibleBool(self.delegate.manage(v as isize))
+        ReversibleBool(self.manage_int(v as isize))
     }
     /// returns the value of a managed boolean
     pub fn get_bool(&self, id: ReversibleBool) -> bool {
-        self.delegate.get_value(id.0) != 0
+        self.get_int(id.0) != 0
     }
     /// sets a managed boolean's value and returns the new value
     pub fn set_bool(&mut self, id: ReversibleBool, value: bool) -> bool {
-        self.delegate.set_value(id.0, value as isize) != 0
+        self.set_int(id.0, value as isize) != 0
     }
     /// flips a boolean's value and returns it
     pub fn flip_bool(&mut self, id: ReversibleBool) -> bool {
-        self.delegate
-            .set_value(id.0, self.delegate.get_value(id.0).not())
-            != 0
+        self.set_bool(id, self.get_bool(id).not())
     }
 }
 //------------------------------------------------------------------------------
 // Int management
 //------------------------------------------------------------------------------
-impl SimpleManager {
+impl StateManager {
     /// creates a new managed integer
-    pub fn manage_int(&mut self, v: isize) -> ReversibleInt {
-        ReversibleInt(self.delegate.manage(v))
+    pub fn manage_int(&mut self, value: isize) -> ReversibleInt {
+        let id = ReversibleInt(self.integers.len());
+        self.integers.push(IntState {
+            id,
+            clock: self.clock,
+            value,
+        });
+        id
     }
     /// returns the value of a managed integer
     pub fn get_int(&self, id: ReversibleInt) -> isize {
-        self.delegate.get_value(id.0)
+        self.integers[id.0].value
     }
     /// sets a managed integer's value and returns the new value
     pub fn set_int(&mut self, id: ReversibleInt, value: isize) -> isize {
-        self.delegate.set_value(id.0, value)
+        let curr = self.integers[id.0];
+        // if the value is unchanged there is no need to do anything
+        if value != curr.value {
+            // do i need to trail this data ?
+            if curr.clock < self.clock {
+                self.trail.push(TrailEntry::IntEntry(curr));
+                self.integers[id.0] = IntState {
+                    id,
+                    clock: self.clock,
+                    value,
+                }
+            // apparently i don't need to save it on the trail. i can modify it right away
+            } else {
+                self.integers[id.0].value = value;
+            }
+        }
+        value
     }
     /// increments a managed integer's value
     pub fn increment(&mut self, id: ReversibleInt) -> isize {
-        self.delegate.increment(id.0)
+        self.set_int(id, self.get_int(id) + 1)
     }
     /// decrements a managed integer's value
     pub fn decrement(&mut self, id: ReversibleInt) -> isize {
-        self.delegate.decrement(id.0)
+        self.set_int(id, self.get_int(id) - 1)
     }
 }
 //------------------------------------------------------------------------------
 // Sparse sets management
 //------------------------------------------------------------------------------
-
 /// The information that needs to be maintained in order to deal with a
 /// sparse set
 #[derive(Debug, Clone, Copy)]
@@ -170,7 +265,7 @@ struct SparseSet {
     /// the maximum value in the set
     max: ReversibleInt,
 }
-impl SimpleManager {
+impl StateManager {
     /// creates a new managed sparse set with values
     /// [0 + value_offset, 1 + value_offset, 2 + value_offset, ... , n-1 + value_offset]
     ///
@@ -366,174 +461,21 @@ impl SimpleManager {
     }
 }
 
-//------------------------------------------------------------------------------
-// LOW LEVEL MANAGEMENT
-//------------------------------------------------------------------------------
-
-/// Uniquely identifies a managed resource
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Reversible(usize);
-
-/// This is the structure which is in charge of guaranteeing that all data
-/// are properly saved and restored as though they were pushed on a stack
-#[derive(Debug, Clone, Default)]
-pub struct StateManager<T>
-where
-    T: Eq + Copy,
-{
-    /// At what 'time' was this data modified to the point where it needed being saved ?
-    ///
-    /// # Note:
-    /// This data was referred to as 'magic' in minicp and maxicp. Still I like to
-    /// convey the idea that 'magic' is actually a monotonic clock  indicating the validity
-    /// timestamp of the data.
-    clock: usize,
-
-    /// The current value of the various managed data
-    current: Vec<TrailEntry<T>>,
-    /// The previous values that are saved on the trail
-    trail: Vec<TrailEntry<T>>,
-    /// The various 'levels' of data that have been 'push' and 'pop' separated
-    levels: Vec<Level>,
-}
-
-impl<T> StateManager<T>
-where
-    T: Eq + Copy,
-{
-    /// creates a new empty state manager
-    pub fn new() -> Self {
-        Self {
-            clock: 0,
-            current: vec![],
-            trail: vec![],
-            levels: vec![Level {
-                trail_size: 0,
-                accessible: 0,
-            }],
-        }
-    }
-
-    /// creates a new managed resource and returns its identifier
-    pub fn manage(&mut self, value: T) -> Reversible {
-        let id = Reversible(self.current.len());
-        self.current.push(TrailEntry {
-            id,
-            clock: self.clock,
-            value,
-        });
-        id
-    }
-
-    /// retrieves the value of the given resource
-    pub fn get_value(&self, id: Reversible) -> T {
-        self.current[id.0].value
-    }
-
-    /// sets the value of the given resource and returns the new value of that resource
-    pub fn set_value(&mut self, id: Reversible, value: T) -> T {
-        let curr = self.current[id.0];
-        // if the value is unchanged there is no need to do anything
-        if value != curr.value {
-            // do i need to trail this data ?
-            if curr.clock < self.clock {
-                self.trail.push(curr);
-                self.current[id.0] = TrailEntry {
-                    id,
-                    clock: self.clock,
-                    value,
-                }
-            // apparently i don't need to save it on the trail. i can modify it right away
-            } else {
-                self.current[id.0].value = value;
-            }
-        }
-
-        value
-    }
-
-    /// save the current state and make it restoreable
-    pub fn push(&mut self) {
-        self.clock += 1;
-        self.levels.push(Level {
-            trail_size: self.trail.len(),
-            accessible: self.current.len(),
-        })
-    }
-
-    /// restore the current state
-    pub fn pop(&mut self) {
-        let level = self
-            .levels
-            .pop()
-            .expect("cannot pop above the root level of the state manager");
-        for e in self.trail.iter().skip(level.trail_size).rev().copied() {
-            self.current[e.id.0] = e;
-        }
-        self.trail.truncate(level.trail_size);
-        self.current.truncate(level.accessible);
-    }
-}
-
-impl StateManager<bool> {
-    /// Negates the value
-    pub fn flip(&mut self, id: Reversible) -> bool {
-        self.set_value(id, self.get_value(id).not())
-    }
-}
-
-impl<T> StateManager<T>
-where
-    T: Int,
-{
-    /// Increments the value
-    pub fn increment(&mut self, id: Reversible) -> T {
-        self.set_value(id, self.get_value(id) + T::one())
-    }
-    /// Decrements the value
-    pub fn decrement(&mut self, id: Reversible) -> T {
-        self.set_value(id, self.get_value(id) - T::one())
-    }
-}
-
-/// An entry that is used to save/restore data from the trail
-#[derive(Debug, Clone, Copy)]
-struct TrailEntry<T>
-where
-    T: Eq + Copy,
-{
-    /// The identifier of the managed resource
-    id: Reversible,
-    /// At what 'time' was this data modified to the point where it needed being saved ?
-    ///
-    /// # Note:
-    /// This data was referred to as 'magic' in minicp and maxicp. Still I like to
-    /// convey the idea that 'magic' is actually a monotonic clock  indicating the validity
-    /// timestamp of the data.
-    clock: usize,
-    /// The value that will be restored in the managed data
-    value: T,
-}
-
-/// This structure keeps track of the information about one given level: the length of its
-/// trail and the count of variables that are managed by the state manager
-#[derive(Debug, Clone, Copy, Default)]
-struct Level {
-    trail_size: usize,
-    accessible: usize,
-}
-
 // #############################################################################
 // ### UNIT TESTS ##############################################################
 // #############################################################################
 
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//~~~~ UT BOOLEAN ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #[cfg(test)]
 mod tests_manager_bool {
     use super::*;
 
     #[test]
     fn it_works() {
-        let mut mgr = SimpleManager::new();
+        let mut mgr = StateManager::new();
 
         let a = mgr.manage_bool(false);
         assert!(!mgr.get_bool(a));
@@ -563,7 +505,7 @@ mod tests_manager_bool {
     #[test]
     #[should_panic]
     fn one_cannot_use_an_item_that_has_been_managed_at_a_later_stage() {
-        let mut mgr = SimpleManager::new();
+        let mut mgr = StateManager::new();
 
         let a = mgr.manage_bool(false);
         assert!(!mgr.get_bool(a));
@@ -584,13 +526,16 @@ mod tests_manager_bool {
     }
 }
 
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//~~~~ UT INTEGER ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #[cfg(test)]
 mod tests_manager_int {
     use super::*;
 
     #[test]
     fn it_works() {
-        let mut mgr = SimpleManager::new();
+        let mut mgr = StateManager::new();
 
         let a = mgr.manage_int(42);
         assert_eq!(mgr.get_int(a), 42);
@@ -620,7 +565,7 @@ mod tests_manager_int {
     #[test]
     #[should_panic]
     fn one_cannot_use_an_item_that_has_been_managed_at_a_later_stage() {
-        let mut mgr = SimpleManager::new();
+        let mut mgr = StateManager::new();
 
         let a = mgr.manage_int(0);
         assert_eq!(mgr.get_int(a), 0);
@@ -640,14 +585,16 @@ mod tests_manager_int {
         mgr.get_int(b); // this is where the panic must occur
     }
 }
-
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//~~~~ UT SPARSE SET ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #[cfg(test)]
 mod tests_manager_sparse_set {
-    use crate::SimpleManager;
+    use crate::StateManager;
 
     #[test]
     fn contains() {
-        let mut mgr = SimpleManager::new();
+        let mut mgr = StateManager::new();
         let ss = mgr.manage_sparse_set(10, 0);
 
         assert!(mgr.sparse_set_contains(ss, 5));
@@ -662,7 +609,7 @@ mod tests_manager_sparse_set {
     }
     #[test]
     fn contains_is_always_false_for_items_not_supposed_to_be_in_set() {
-        let mut mgr = SimpleManager::new();
+        let mut mgr = StateManager::new();
         let ss = mgr.manage_sparse_set(3, 0);
 
         assert!(!mgr.sparse_set_contains(ss, 5));
@@ -673,7 +620,7 @@ mod tests_manager_sparse_set {
 
     #[test]
     fn is_empty() {
-        let mut mgr = SimpleManager::new();
+        let mut mgr = StateManager::new();
         let ss = mgr.manage_sparse_set(3, 0);
 
         mgr.push();
@@ -692,7 +639,7 @@ mod tests_manager_sparse_set {
 
     #[test]
     fn size() {
-        let mut mgr = SimpleManager::new();
+        let mut mgr = StateManager::new();
         let ss = mgr.manage_sparse_set(3, 0);
 
         mgr.push();
@@ -711,7 +658,7 @@ mod tests_manager_sparse_set {
 
     #[test]
     fn get_max_decreases_when_ub_drops() {
-        let mut mgr = SimpleManager::new();
+        let mut mgr = StateManager::new();
         let ss = mgr.manage_sparse_set(3, 0);
 
         mgr.push();
@@ -737,7 +684,7 @@ mod tests_manager_sparse_set {
     }
     #[test]
     fn get_max_is_not_affected_by_holes() {
-        let mut mgr = SimpleManager::new();
+        let mut mgr = StateManager::new();
         let ss = mgr.manage_sparse_set(3, 0);
 
         mgr.push();
@@ -764,7 +711,7 @@ mod tests_manager_sparse_set {
 
     #[test]
     fn get_min_increases_when_lb_bumps() {
-        let mut mgr = SimpleManager::new();
+        let mut mgr = StateManager::new();
         let ss = mgr.manage_sparse_set(3, 0);
 
         mgr.push();
@@ -791,7 +738,7 @@ mod tests_manager_sparse_set {
 
     #[test]
     fn get_min_is_not_affected_by_holes() {
-        let mut mgr = SimpleManager::new();
+        let mut mgr = StateManager::new();
         let ss = mgr.manage_sparse_set(3, 0);
 
         mgr.push();
@@ -818,7 +765,7 @@ mod tests_manager_sparse_set {
 
     #[test]
     fn remove_all() {
-        let mut mgr = SimpleManager::new();
+        let mut mgr = StateManager::new();
         let ss = mgr.manage_sparse_set(3, 0);
         assert!(!mgr.sparse_set_is_empty(ss));
 
@@ -832,7 +779,7 @@ mod tests_manager_sparse_set {
 
     #[test]
     fn remove() {
-        let mut mgr = SimpleManager::new();
+        let mut mgr = StateManager::new();
         let ss = mgr.manage_sparse_set(3, 0);
 
         assert!(mgr.sparse_set_contains(ss, 1));
@@ -845,7 +792,7 @@ mod tests_manager_sparse_set {
 
     #[test]
     fn remove_above() {
-        let mut mgr = SimpleManager::new();
+        let mut mgr = StateManager::new();
         let ss = mgr.manage_sparse_set(10, 0);
 
         assert!(mgr.sparse_set_contains(ss, 5));
@@ -862,7 +809,7 @@ mod tests_manager_sparse_set {
     }
     #[test]
     fn remove_above_max_does_nothing() {
-        let mut mgr = SimpleManager::new();
+        let mut mgr = StateManager::new();
         let ss = mgr.manage_sparse_set(10, 0);
 
         assert!(mgr.sparse_set_contains(ss, 5));
@@ -876,7 +823,7 @@ mod tests_manager_sparse_set {
     }
     #[test]
     fn remove_above_min_empties_set() {
-        let mut mgr = SimpleManager::new();
+        let mut mgr = StateManager::new();
         let ss = mgr.manage_sparse_set(10, 0);
 
         assert!(mgr.sparse_set_contains(ss, 5));
@@ -889,7 +836,7 @@ mod tests_manager_sparse_set {
 
     #[test]
     fn remove_below() {
-        let mut mgr = SimpleManager::new();
+        let mut mgr = StateManager::new();
         let ss = mgr.manage_sparse_set(10, 0);
 
         assert!(mgr.sparse_set_contains(ss, 5));
@@ -906,7 +853,7 @@ mod tests_manager_sparse_set {
     }
     #[test]
     fn remove_below_min_does_nothing() {
-        let mut mgr = SimpleManager::new();
+        let mut mgr = StateManager::new();
         let ss = mgr.manage_sparse_set(10, 0);
 
         assert!(mgr.sparse_set_contains(ss, 5));
@@ -920,7 +867,7 @@ mod tests_manager_sparse_set {
     }
     #[test]
     fn remove_below_max_empties_set() {
-        let mut mgr = SimpleManager::new();
+        let mut mgr = StateManager::new();
         let ss = mgr.manage_sparse_set(10, 0);
 
         assert!(mgr.sparse_set_contains(ss, 5));
@@ -929,62 +876,5 @@ mod tests_manager_sparse_set {
 
         mgr.sparse_set_remove_below(ss, 10);
         assert!(mgr.sparse_set_is_empty(ss));
-    }
-}
-
-#[cfg(test)]
-mod tests_basic_manager {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let mut mgr = StateManager::<isize>::new();
-
-        let a = mgr.manage(0);
-        assert_eq!(mgr.get_value(a), 0);
-
-        mgr.push();
-        assert_eq!(mgr.get_value(a), 0);
-
-        mgr.set_value(a, 1);
-        assert_eq!(mgr.get_value(a), 1);
-
-        mgr.push();
-        assert_eq!(mgr.get_value(a), 1);
-
-        mgr.set_value(a, 2);
-        assert_eq!(mgr.get_value(a), 2);
-
-        mgr.set_value(a, 42);
-        assert_eq!(mgr.get_value(a), 42);
-
-        mgr.pop();
-        assert_eq!(mgr.get_value(a), 1);
-
-        mgr.pop();
-        assert_eq!(mgr.get_value(a), 0);
-    }
-
-    #[test]
-    #[should_panic]
-    fn one_cannot_use_an_item_that_has_been_managed_at_a_later_stage() {
-        let mut mgr = StateManager::<isize>::new();
-
-        let a = mgr.manage(10);
-        assert_eq!(mgr.get_value(a), 10);
-
-        mgr.push();
-        let b = mgr.manage(20);
-
-        assert_eq!(mgr.get_value(a), 10);
-        assert_eq!(mgr.get_value(b), 20);
-
-        mgr.set_value(a, 30);
-        assert_eq!(mgr.get_value(a), 30);
-        assert_eq!(mgr.get_value(b), 20);
-
-        mgr.pop();
-        assert_eq!(mgr.get_value(a), 10);
-        mgr.get_value(b); // this is where the panic must occur
     }
 }
