@@ -31,7 +31,11 @@ pub struct ReversibleInt(usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ReversibleBool(ReversibleInt);
 
-/// The identifier of managed integer resource
+/// The identifier of managed interval resource
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ReversibleInterval(usize);
+
+/// The identifier of managed sparse set resource
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ReversibleSparseSet(usize);
 
@@ -51,6 +55,9 @@ struct Level {
     /// simply mqpped onto integers)
     integers: usize,
 
+    /// how many intervals have already been defined ?
+    intervals: usize,
+
     /// how many sparse sets have already been recorded ?
     sparse_sets: usize,
     /// length of the sparse sets data
@@ -64,23 +71,6 @@ enum TrailEntry {
     /// An entry related to the restoration of an integer value
     IntEntry(IntState),
 }
-
-/// The state of an integer that can be saved and restored
-#[derive(Debug, Clone, Copy)]
-struct IntState {
-    /// The identifier of the managed resource
-    id: ReversibleInt,
-    /// At what 'time' was this data modified to the point where it needed being saved ?
-    ///
-    /// # Note:
-    /// This data was referred to as 'magic' in minicp and maxicp. Still I like to
-    /// convey the idea that 'magic' is actually a monotonic clock  indicating the validity
-    /// timestamp of the data.
-    clock: usize,
-    /// The value that will be restored in the managed data
-    value: isize,
-}
-
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //~~~~ STATE MANAGER ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -107,6 +97,9 @@ pub struct StateManager {
     /// The current value of the various managed data
     integers: Vec<IntState>,
 
+    /// The intervals that have been defined
+    intervals: Vec<Interval>,
+
     /// Holds the metadata about sparse sets
     sparse_sets: Vec<SparseSet>,
     /// Holds the actual content of the sparse sets
@@ -125,9 +118,11 @@ impl StateManager {
         Self {
             clock: 0,
             trail: vec![],
-
+            //
             integers: vec![],
-
+            //
+            intervals: vec![],
+            //
             sparse_sets: vec![],
             sparse_set_data: vec![],
             sparse_set_idx: vec![],
@@ -135,6 +130,7 @@ impl StateManager {
             levels: vec![Level {
                 trail_size: 0,
                 integers: 0,
+                intervals: 0,
                 sparse_sets: 0,
                 sparse_set_data: 0,
             }],
@@ -147,9 +143,11 @@ impl StateManager {
         // additional book keeping
         self.levels.push(Level {
             trail_size: self.trail.len(),
-            
+            //
             integers: self.integers.len(),
-
+            //
+            intervals: self.intervals.len(),
+            //
             sparse_sets: self.sparse_sets.len(),
             sparse_set_data: self.sparse_set_data.len(),
         })
@@ -171,36 +169,32 @@ impl StateManager {
 
         // integers book keeping
         self.integers.truncate(level.integers);
-
+        // intervals book keeping
+        self.intervals.truncate(level.intervals);
         // sparse set book keeping
         self.sparse_sets.truncate(level.sparse_sets);
         self.sparse_set_data.truncate(level.sparse_set_data);
     }
 }
 //------------------------------------------------------------------------------
-// Bool management
-//------------------------------------------------------------------------------
-impl StateManager {
-    /// creates a new managed boolean
-    pub fn manage_bool(&mut self, v: bool) -> ReversibleBool {
-        ReversibleBool(self.manage_int(v as isize))
-    }
-    /// returns the value of a managed boolean
-    pub fn get_bool(&self, id: ReversibleBool) -> bool {
-        self.get_int(id.0) != 0
-    }
-    /// sets a managed boolean's value and returns the new value
-    pub fn set_bool(&mut self, id: ReversibleBool, value: bool) -> bool {
-        self.set_int(id.0, value as isize) != 0
-    }
-    /// flips a boolean's value and returns it
-    pub fn flip_bool(&mut self, id: ReversibleBool) -> bool {
-        self.set_bool(id, self.get_bool(id).not())
-    }
-}
-//------------------------------------------------------------------------------
 // Int management
 //------------------------------------------------------------------------------
+/// The state of an integer that can be saved and restored
+#[derive(Debug, Clone, Copy)]
+struct IntState {
+    /// The identifier of the managed resource
+    id: ReversibleInt,
+    /// At what 'time' was this data modified to the point where it needed being saved ?
+    ///
+    /// # Note:
+    /// This data was referred to as 'magic' in minicp and maxicp. Still I like to
+    /// convey the idea that 'magic' is actually a monotonic clock  indicating the validity
+    /// timestamp of the data.
+    clock: usize,
+    /// The value that will be restored in the managed data
+    value: isize,
+}
+
 impl StateManager {
     /// creates a new managed integer
     pub fn manage_int(&mut self, value: isize) -> ReversibleInt {
@@ -246,6 +240,126 @@ impl StateManager {
     }
 }
 //------------------------------------------------------------------------------
+// Bool management
+//------------------------------------------------------------------------------
+impl StateManager {
+    /// creates a new managed boolean
+    pub fn manage_bool(&mut self, v: bool) -> ReversibleBool {
+        ReversibleBool(self.manage_int(v as isize))
+    }
+    /// returns the value of a managed boolean
+    pub fn get_bool(&self, id: ReversibleBool) -> bool {
+        self.get_int(id.0) != 0
+    }
+    /// sets a managed boolean's value and returns the new value
+    pub fn set_bool(&mut self, id: ReversibleBool, value: bool) -> bool {
+        self.set_int(id.0, value as isize) != 0
+    }
+    /// flips a boolean's value and returns it
+    pub fn flip_bool(&mut self, id: ReversibleBool) -> bool {
+        self.set_bool(id, self.get_bool(id).not())
+    }
+}
+//------------------------------------------------------------------------------
+// Interval management
+//------------------------------------------------------------------------------
+/// This structure tracks the information that needs to be maintained when
+/// working with a managed interval
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct Interval {
+    /// the minimum value in the interval (included !)
+    min: ReversibleInt,
+    /// the maximum value in the interval (included !)
+    max: ReversibleInt,
+}
+impl StateManager {
+    /// creates a new managed interval low..=high (that is, an interval where
+    /// both ends are included in the interval)
+    /// 
+    /// # Parameters
+    /// - low: the lowest possible value in this interval (included)
+    /// - high: the highest possible value in this interval (included)
+    pub fn manage_interval(&mut self, low: isize, high: isize) -> ReversibleInterval {
+        let id = ReversibleInterval(self.intervals.len());
+        let min = self.manage_int(low);
+        let max = self.manage_int(high);
+        self.intervals.push(Interval {min, max});
+        id
+    }
+    /// Returns true iff the interval is empty
+    pub fn interval_is_empty(&self, id: ReversibleInterval) -> bool {
+        self.interval_size(id) == 0
+    }
+    /// Returns the number of integer values in the interval
+    pub fn interval_size(&self, id: ReversibleInterval) -> usize {
+        let interval = self.intervals[id.0];
+        0.max(1 + self.get_int(interval.max) - self.get_int(interval.min)) as usize
+    }
+    /// Returns the minimum integer value in the interval (if there is one)
+    pub fn interval_get_min(&self, id: ReversibleInterval) -> Option<isize> {
+        let interval = self.intervals[id.0];
+        let min = self.get_int(interval.min);
+        let max = self.get_int(interval.max);
+
+        if min <= max {
+            Some(min)
+        } else {
+            None
+        }
+    }
+    /// Returns the maximum integer value in the interval (if there is one)
+    pub fn interval_get_max(&self, id: ReversibleInterval) -> Option<isize> {
+        let interval = self.intervals[id.0];
+        let min = self.get_int(interval.min);
+        let max = self.get_int(interval.max);
+
+        if min <= max {
+            Some(max)
+        } else {
+            None
+        }
+    }
+    /// Returns true iff the given interval comprises the specified value
+    pub fn interval_contains(&self, id: ReversibleInterval, value: isize) -> bool {
+        let interval = self.intervals[id.0];
+        let min = self.get_int(interval.min);
+        let max = self.get_int(interval.max);
+
+        min <= value && value <= max
+    }
+    /// removes all values in the interval except the given value (if it belongs to the set)
+    pub fn interval_remove_all_but(&mut self, id: ReversibleInterval, value: isize) {
+        if self.interval_contains(id, value) {
+            let interval = self.intervals[id.0];
+            self.set_int(interval.min, value);
+            self.set_int(interval.max, value);
+        } else {
+            self.interval_remove_all(id);
+        }
+    }
+    /// removes all values in the interval
+    pub fn interval_remove_all(&mut self, id: ReversibleInterval) {
+        let interval = self.intervals[id.0];
+        let min = self.get_int(interval.min);
+        self.set_int(interval.min, 1 + min);
+        self.set_int(interval.max, min);
+    }
+    /// remove from the set all the items having a value lower than the given
+    /// `value`
+    pub fn interval_remove_below(&mut self, id: ReversibleInterval, value: isize) {
+        let interval = self.intervals[id.0];
+        let min = self.get_int(interval.min);
+        self.set_int(interval.min, value.max(min));
+    }
+    /// remove from the set all the items having a value greater than the given
+    /// `value`
+    pub fn interval_remove_above(&mut self, id: ReversibleInterval, value: isize) {
+        let interval = self.intervals[id.0];
+        let max = self.get_int(interval.max);
+        self.set_int(interval.max, value.min(max));
+    }
+}
+//------------------------------------------------------------------------------
 // Sparse sets management
 //------------------------------------------------------------------------------
 /// The information that needs to be maintained in order to deal with a
@@ -260,9 +374,9 @@ struct SparseSet {
     capa: usize,
     /// the current size of the sparse set
     size: ReversibleInt,
-    /// the minimum value in the set
+    /// the minimum value in the set (included !)
     min: ReversibleInt,
-    /// the maximum value in the set
+    /// the maximum value in the set (included !)
     max: ReversibleInt,
 }
 impl StateManager {
@@ -364,7 +478,7 @@ impl StateManager {
         self.set_int(self.sparse_sets[id.0].size, 0);
     }
 
-    /// removes all values in the set
+    /// removes all values in the set except the given value (if it belongs to the set)
     pub fn sparse_set_remove_all_but(&mut self, id: ReversibleSparseSet, value: isize) {
         if self.sparse_set_contains(id, value) {
             // in this case, it suffices to place the desired item in position 0
@@ -460,6 +574,7 @@ impl StateManager {
         }
     }
 }
+
 
 // #############################################################################
 // ### UNIT TESTS ##############################################################
@@ -778,6 +893,35 @@ mod tests_manager_sparse_set {
     }
 
     #[test]
+    fn remove_all_but() {
+        let mut mgr = StateManager::new();
+        let ss = mgr.manage_sparse_set(6, 0);
+        assert_eq!(mgr.sparse_set_size(ss), 6);
+
+        mgr.push();
+        mgr.sparse_set_remove_all_but(ss, 3);
+        assert_eq!(mgr.sparse_set_size(ss), 1);
+        assert!(mgr.sparse_set_contains(ss, 3));
+
+        mgr.pop();
+        assert_eq!(mgr.sparse_set_size(ss), 6);
+    }
+    #[test]
+    fn remove_all_but_wont_set_a_value_off_the_range() {
+        let mut mgr = StateManager::new();
+        let ss = mgr.manage_sparse_set(6, 0);
+        assert_eq!(mgr.sparse_set_size(ss), 6);
+
+        mgr.push();
+        mgr.sparse_set_remove_all_but(ss, 300);
+        assert_eq!(mgr.sparse_set_size(ss), 0);
+
+        mgr.pop();
+        assert_eq!(mgr.sparse_set_size(ss), 6);
+    }
+
+
+    #[test]
     fn remove() {
         let mut mgr = StateManager::new();
         let ss = mgr.manage_sparse_set(3, 0);
@@ -876,5 +1020,275 @@ mod tests_manager_sparse_set {
 
         mgr.sparse_set_remove_below(ss, 10);
         assert!(mgr.sparse_set_is_empty(ss));
+    }
+}
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//~~~~ UT INTERVAL ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#[cfg(test)]
+mod tests_manager_interval {
+    use crate::StateManager;
+
+    #[test]
+    fn contains_is_always_false_for_items_not_supposed_to_be_in_set() {
+        let mut mgr = StateManager::new();
+        let iv = mgr.manage_interval(0, 0);
+
+        assert!(!mgr.interval_contains(iv, 5));
+        assert!(!mgr.interval_contains(iv, 3));
+        assert!(!mgr.interval_contains(iv, -3));
+        assert!(!mgr.interval_contains(iv, -5));
+    }
+
+    #[test]
+    fn is_empty() {
+        let mut mgr = StateManager::new();
+        let iv = mgr.manage_interval(0, 2);
+
+        mgr.push();
+        assert!(!mgr.interval_is_empty(iv));
+        mgr.interval_remove_below(iv, 1);
+        assert!(!mgr.interval_is_empty(iv));
+        mgr.interval_remove_below(iv, 2);
+        assert!(!mgr.interval_is_empty(iv));
+        mgr.interval_remove_below(iv, 3);
+
+        // now it is empty
+        assert!(mgr.interval_is_empty(iv));
+        mgr.pop();
+        assert!(!mgr.interval_is_empty(iv));
+    }
+
+    #[test]
+    fn size() {
+        let mut mgr = StateManager::new();
+        let iv = mgr.manage_interval(0, 2);
+
+        mgr.push();
+        assert_eq!(mgr.interval_size(iv), 3);
+        mgr.interval_remove_below(iv, 1);
+        assert_eq!(mgr.interval_size(iv), 2);
+        mgr.interval_remove_below(iv, 2);
+        assert_eq!(mgr.interval_size(iv), 1);
+        mgr.interval_remove_below(iv, 3);
+
+        // now it is empty
+        assert_eq!(mgr.interval_size(iv), 0);
+        mgr.pop();
+        assert_eq!(mgr.interval_size(iv), 3);
+    }
+
+    #[test]
+    fn get_max_decreases_when_ub_drops() {
+        let mut mgr = StateManager::new();
+        let iv = mgr.manage_interval(0, 2);
+
+        mgr.push();
+        assert_eq!(mgr.interval_get_max(iv), Some(2));
+        mgr.interval_remove_above(iv, 1);
+
+        mgr.push();
+        assert_eq!(mgr.interval_get_max(iv), Some(1));
+        mgr.interval_remove_above(iv, 0);
+
+        mgr.push();
+        assert_eq!(mgr.interval_get_max(iv), Some(0));
+
+        mgr.interval_remove_above(iv, -1);
+        assert_eq!(mgr.interval_get_max(iv), None);
+
+        mgr.pop();
+        assert_eq!(mgr.interval_get_max(iv), Some(0));
+        mgr.pop();
+        assert_eq!(mgr.interval_get_max(iv), Some(1));
+        mgr.pop();
+        assert_eq!(mgr.interval_get_max(iv), Some(2));
+    }
+    
+    #[test]
+    fn get_min_increases_when_lb_bumps() {
+        let mut mgr = StateManager::new();
+        let iv = mgr.manage_interval(0, 2);
+
+        mgr.push();
+        assert_eq!(mgr.interval_get_min(iv), Some(0));
+        mgr.interval_remove_below(iv, 1);
+
+        mgr.push();
+        assert_eq!(mgr.interval_get_min(iv), Some(1));
+        mgr.interval_remove_below(iv, 2);
+
+        mgr.push();
+        assert_eq!(mgr.interval_get_min(iv), Some(2));
+
+        mgr.interval_remove_below(iv, 3);
+        assert_eq!(mgr.interval_get_min(iv), None);
+
+        mgr.pop();
+        assert_eq!(mgr.interval_get_min(iv), Some(2));
+        mgr.pop();
+        assert_eq!(mgr.interval_get_min(iv), Some(1));
+        mgr.pop();
+        assert_eq!(mgr.interval_get_min(iv), Some(0));
+    }
+
+    #[test]
+    fn remove_all() {
+        let mut mgr = StateManager::new();
+        let iv = mgr.manage_interval(0, 5);
+        assert!(!mgr.interval_is_empty(iv));
+
+        mgr.push();
+        mgr.interval_remove_all(iv);
+        assert!(mgr.interval_is_empty(iv));
+
+        mgr.pop();
+        assert!(!mgr.interval_is_empty(iv));
+    }
+
+    #[test]
+    fn remove_all_but() {
+        let mut mgr = StateManager::new();
+        let iv = mgr.manage_interval(0, 5);
+        assert_eq!(mgr.interval_size(iv), 6);
+
+        mgr.push();
+        mgr.interval_remove_all_but(iv, 3);
+        assert_eq!(mgr.interval_size(iv), 1);
+        assert!(mgr.interval_contains(iv, 3));
+
+        mgr.pop();
+        assert_eq!(mgr.interval_size(iv), 6);
+    }
+
+    #[test]
+    fn remove_all_but_wont_set_a_value_off_the_range() {
+        let mut mgr = StateManager::new();
+        let iv = mgr.manage_interval(0, 5);
+        assert_eq!(mgr.interval_size(iv), 6);
+
+        mgr.push();
+        mgr.interval_remove_all_but(iv, 300);
+        assert_eq!(mgr.interval_size(iv), 0);
+
+        mgr.pop();
+        assert_eq!(mgr.interval_size(iv), 6);
+    }
+
+
+    #[test]
+    fn remove_above() {
+        let mut mgr = StateManager::new();
+        let iv = mgr.manage_interval(0, 9);
+
+        assert!(mgr.interval_contains(iv, 5));
+        assert_eq!(mgr.interval_get_max(iv), Some(9));
+
+        mgr.push();
+        mgr.interval_remove_above(iv, 5);
+        assert!(mgr.interval_contains(iv, 5));
+        assert_eq!(mgr.interval_get_max(iv), Some(5));
+
+        mgr.pop();
+        assert!(mgr.interval_contains(iv, 5));
+        assert_eq!(mgr.interval_get_max(iv), Some(9));
+    }
+
+    #[test]
+    fn remove_above_cant_reopen_interval() {
+        let mut mgr = StateManager::new();
+        let iv = mgr.manage_interval(0, 9);
+
+        assert!(mgr.interval_contains(iv, 5));
+        assert_eq!(mgr.interval_get_max(iv), Some(9));
+
+        mgr.push();
+        mgr.interval_remove_below(iv, 10);
+        assert!(mgr.interval_is_empty(iv));
+        mgr.interval_remove_above(iv, 11);
+        assert!(mgr.interval_is_empty(iv));
+    }
+    
+    #[test]
+    fn remove_above_max_does_nothing() {
+        let mut mgr = StateManager::new();
+        let iv = mgr.manage_interval(0, 9);
+
+        assert!(mgr.interval_contains(iv, 5));
+        assert_eq!(mgr.interval_size(iv), 10);
+        assert_eq!(mgr.interval_get_max(iv), Some(9));
+
+        mgr.interval_remove_above(iv, 10);
+        assert!(mgr.interval_contains(iv, 5));
+        assert_eq!(mgr.interval_size(iv), 10);
+        assert_eq!(mgr.interval_get_max(iv), Some(9));
+    }
+    #[test]
+    fn remove_above_min_empties_set() {
+        let mut mgr = StateManager::new();
+        let iv = mgr.manage_interval(0, 9);
+
+        assert!(mgr.interval_contains(iv, 5));
+        assert_eq!(mgr.interval_size(iv), 10);
+        assert_eq!(mgr.interval_get_max(iv), Some(9));
+
+        mgr.interval_remove_above(iv, -1);
+        assert!(mgr.interval_is_empty(iv));
+    }
+
+    #[test]
+    fn remove_below() {
+        let mut mgr = StateManager::new();
+        let iv = mgr.manage_interval(0, 5);
+
+        assert!(mgr.interval_contains(iv, 5));
+        assert_eq!(mgr.interval_get_min(iv), Some(0));
+
+        mgr.push();
+        mgr.interval_remove_below(iv, 5);
+        assert!(mgr.interval_contains(iv, 5));
+        assert_eq!(mgr.interval_get_min(iv), Some(5));
+
+        mgr.pop();
+        assert!(mgr.interval_contains(iv, 5));
+        assert_eq!(mgr.interval_get_min(iv), Some(0));
+    }
+    #[test]
+    fn remove_below_cant_reopen_interval() {
+        let mut mgr = StateManager::new();
+        let iv = mgr.manage_interval(0, 9);
+
+        assert!(!mgr.interval_is_empty(iv));
+        mgr.interval_remove_above(iv, -1);
+        assert!(mgr.interval_is_empty(iv));
+        mgr.interval_remove_below(iv, -20);
+        assert!(mgr.interval_is_empty(iv));
+    }
+    #[test]
+    fn remove_below_min_does_nothing() {
+        let mut mgr = StateManager::new();
+        let iv = mgr.manage_interval(0, 9);
+
+        assert!(mgr.interval_contains(iv, 5));
+        assert_eq!(mgr.interval_size(iv), 10);
+        assert_eq!(mgr.interval_get_min(iv), Some(0));
+
+        mgr.interval_remove_below(iv, -1);
+        assert!(mgr.interval_contains(iv, 5));
+        assert_eq!(mgr.interval_size(iv), 10);
+        assert_eq!(mgr.interval_get_min(iv), Some(0));
+    }
+    #[test]
+    fn remove_below_max_empties_set() {
+        let mut mgr = StateManager::new();
+        let iv = mgr.manage_interval(0, 9);
+
+        assert!(mgr.interval_contains(iv, 5));
+        assert_eq!(mgr.interval_size(iv), 10);
+        assert_eq!(mgr.interval_get_min(iv), Some(0));
+
+        mgr.interval_remove_below(iv, 10);
+        assert!(mgr.interval_is_empty(iv));
     }
 }

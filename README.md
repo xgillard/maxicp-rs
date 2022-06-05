@@ -17,12 +17,12 @@ maxicp (https://pschaus.github.io/maxicp/).
 * [ ] State
     * [X] Implement a trailing mechanism (maybe simpify to only keep one type of signed / unsigned)
     * [X] Implement reversible sparse set
-    * [ ] Implement fast and efficient bitsets (see smallbitset)
-    * [ ] Implement reversible interval
-    * [ ] Implement reversible bitset
+    * [X] Implement reversible interval
     * [ ] Implement reversible lazy sparse set (interval that might become a sparse set)
-	* [ ] Implement reversible tri partition
-	* [ ] Think about a reversible stack and reversible hashmap (I think the ones from maxicp are incorrect)
+    * [ ] Implement fast and efficient bitsets
+    * [ ] Implement reversible bitset
+	* [ ] Implement reversible tri partition 
+	* [ ] Think about a reversible stack (push only)
 * [ ] Model
     * [ ] Implement bool var 
     * [ ] Implement int variables
