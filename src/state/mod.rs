@@ -15,26 +15,39 @@
 
 //! The state module comprises all traits and datastructures related to
 //! the state (save and restore) management.
+//! 
+//! # Note
+//! The state manager have been thought of in terms of a visitor pattern. While 
+//! this might seem undesirable at first, this choice was operated for 
+//! * delivering the best possible performance at runtime
+//! * getting over the absence of overloading in rust (which is good imho)
+//! * maintaining the reversible objects themselves dead simple (which makes it 
+//!   easy to expose these objects to other languages -- ie python). 
+//! 
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //~~~~ MANAGED RESOURCES ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-/// The identifier of managed integer resource
+/// The identifier of a managed integer resource
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ReversibleInt(usize);
 
-/// The identifier of managed boolean resource
+/// The identifier of a managed boolean resource
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ReversibleBool(ReversibleInt);
 
-/// The identifier of managed interval resource
+/// The identifier of a managed interval resource
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ReversibleInterval(usize);
 
-/// The identifier of managed sparse set resource
+/// The identifier of a managed sparse set resource
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ReversibleSparseSet(usize);
+
+/// The identifier of a managed sparse set resource
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ReversibleLazySparseSet(usize);
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //~~~~ MANAGER TRAITS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -13,16 +13,11 @@ maxicp (https://pschaus.github.io/maxicp/).
 	<img src="./resources/maxicp-rs_small.png" alt="maxicp-rs-logo" />
 </p>
 
-## Roadmap
-* [ ] State
+## Roadmap to minimum viable product
+* [X] State
     * [X] Implement a trailing mechanism (maybe simpify to only keep one type of signed / unsigned)
     * [X] Implement reversible sparse set
     * [X] Implement reversible interval
-    * [ ] Implement reversible lazy sparse set (interval that might become a sparse set)
-    * [ ] Implement fast and efficient bitsets
-    * [ ] Implement reversible bitset
-	* [ ] Implement reversible tri partition 
-	* [ ] Think about a reversible stack (push only)
 * [ ] Model
     * [ ] Implement bool var 
     * [ ] Implement int variables
@@ -37,3 +32,13 @@ maxicp (https://pschaus.github.io/maxicp/).
 	* [ ] For C++ (with cxx)
 	* [ ] For Python3 (with pyo3)
 	* [ ] For Java (maybe consider)
+
+
+
+## Maybe later
+* [ ] State
+    * [ ] Implement reversible lazy sparse set (interval that might become a sparse set)
+    * [ ] Implement fast and efficient bitsets
+    * [ ] Implement reversible bitset
+	* [ ] Implement reversible tri partition 
+	* [ ] Implement reversible stack (push only)
