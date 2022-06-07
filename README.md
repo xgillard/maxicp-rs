@@ -18,16 +18,15 @@ maxicp (https://pschaus.github.io/maxicp/).
     * [X] Implement a trailing mechanism (maybe simpify to only keep one type of signed / unsigned)
     * [X] Implement reversible sparse set
     * [X] Implement reversible interval
-* [ ] Model
-    * [ ] Implement bool var 
-    * [ ] Implement int variables
+* [ ] Engine
+    * [X] Implement bool var 
+    * [X] Implement int variables
 	* [ ] Implement sequence variables
-	* [ ] Define constraint trait
+	* [X] Define constraint and propagator traits
 	* [ ] Implement the basic constraints
+    * [ ] Implement the solver with propagation fixpoint
 * [ ] Search
     * [ ] Implement search strategies
-* [ ] Solver
-    * [ ] Implement the solver with propagation fixpoint
 * [ ] Bindings
 	* [ ] For C++ (with cxx)
 	* [ ] For Python3 (with pyo3)

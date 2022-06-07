@@ -15,15 +15,15 @@
 
 //! The state module comprises all traits and datastructures related to
 //! the state (save and restore) management.
-//! 
+//!
 //! # Note
-//! The state manager have been thought of in terms of a visitor pattern. While 
-//! this might seem undesirable at first, this choice was operated for 
+//! The state manager have been thought of in terms of a visitor pattern. While
+//! this might seem undesirable at first, this choice was operated for
 //! * delivering the best possible performance at runtime
 //! * getting over the absence of overloading in rust (which is good imho)
-//! * maintaining the reversible objects themselves dead simple (which makes it 
-//!   easy to expose these objects to other languages -- ie python). 
-//! 
+//! * maintaining the reversible objects themselves dead simple (which makes it
+//!   easy to expose these objects to other languages -- ie python).
+//!
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //~~~~ MANAGED RESOURCES ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -13,5 +13,7 @@
 // Copyright (c)  2022 by X. Gillard
 //
 
-mod int;
-pub use int::*;
+//! This module provides the definition and implementation of the solver and
+//! constraint objects
+
+pub mod core;
