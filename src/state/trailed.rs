@@ -434,7 +434,8 @@ impl SparseSetManager for TrailedStateManager {
         if val < 0 || val >= ss.capa as isize {
             false
         } else {
-            self.sparse_set_idx[val as usize] < self.get_int(ss.size) as usize
+            let sz = self.get_int(ss.size) as usize;
+            self.sparse_set_idx[ss.start + val as usize] < sz + ss.start
         }
     }
     /// removes the given value from the sparse set and returns a boolean telling
@@ -447,8 +448,8 @@ impl SparseSetManager for TrailedStateManager {
             let val = (value - ss.val_offset) as usize;
             let size = self.get_int(ss.size) as usize;
 
-            let a = val;
-            let b = self.sparse_set_data[ss.start + size - 1];
+            let a = ss.start + val;
+            let b = ss.start + self.sparse_set_data[ss.start + size - 1];
             self.sparse_set_swap(a, b);
 
             let size = self.decrement(ss.size) as usize;
@@ -473,8 +474,8 @@ impl SparseSetManager for TrailedStateManager {
             let ss = self.sparse_sets[id.0];
             let val = (value - ss.val_offset) as usize;
 
-            let a = val;
-            let b = self.sparse_set_data[ss.start];
+            let a = ss.start + val;
+            let b = ss.start + self.sparse_set_data[ss.start];
             self.sparse_set_swap(a, b);
 
             self.set_int(ss.size, 1);
