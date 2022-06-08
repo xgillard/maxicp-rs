@@ -151,7 +151,13 @@ pub struct DomainStoreImpl<T: StateManager> {
 impl<T: StateManager> DomainStoreImpl<T> {
     /// Creates a new instance of the domain store based on the given state
     /// manager
-    pub fn new(mut state: T) -> Self {
+    pub fn new(state: T) -> Self {
+        Self::from(state)
+    }
+}
+
+impl<T: StateManager> From<T> for DomainStoreImpl<T> {
+    fn from(mut state: T) -> Self {
         let n_vars = state.manage_int(0);
         Self {
             state,
@@ -159,12 +165,6 @@ impl<T: StateManager> DomainStoreImpl<T> {
             domains: vec![],
             events: vec![],
         }
-    }
-}
-
-impl<T: StateManager> From<T> for DomainStoreImpl<T> {
-    fn from(state: T) -> Self {
-        Self::new(state)
     }
 }
 impl<T: StateManager + Default> Default for DomainStoreImpl<T> {
