@@ -26,8 +26,8 @@ and maxicp (<https://pschaus.github.io/maxicp/>).
   * [X] Implement bool var
   * [X] Implement int variables
   * [X] Define constraint and propagator traits
-  * [ ] Implement the basic constraints
   * [ ] Implement the solver with propagation fixpoint
+  * [ ] Implement the basic constraints
 * [ ] Search
   * [ ] Implement search strategies
 * [ ] Bindings

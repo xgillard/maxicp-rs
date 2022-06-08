@@ -13,8 +13,8 @@
 // Copyright (c)  2022 by X. Gillard
 //
 
-//! This module provides the definition and implementation of the solver's
-//! core abstractions (IntVar, BoolVar, Constraints, ...)
+//! This module provides the definition and implementation of the variables,
+//! DomainStore and DomainBroker
 
 use crate::{ReversibleInt, ReversibleSparseSet, StateManager, TrailedStateManager};
 
@@ -26,21 +26,6 @@ pub struct Inconsistency;
 /// The result of a propagation operation. (Note: all propagation opertations
 /// can fail, in which case they raise an Inconsistency error)
 pub type CPResult<T> = Result<T, Inconsistency>;
-
-/// An identifier to a constraint. A constraint in itself is really just
-/// an identifier in this implementation. The bulk of the work is done by
-/// the solver.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct Constraint(usize);
-
-/// The propagator is the portion of the code where the magic actually happens.
-/// A propagator is called by the solver during the fixpoint computation. It
-/// enforces a certain level of consistency on the domain of the variables it
-/// works on.
-pub trait Propagator {
-    /// Actually runs the custom propagation algorithm
-    fn propagate(&mut self, domain_store: &mut dyn DomainStore) -> CPResult<()>;
-}
 
 /// An integer variable that can be used in a CP model
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]

@@ -16,4 +16,8 @@
 //! This module provides the definition and implementation of the solver and
 //! constraint objects
 
-pub mod core;
+mod domain;
+mod solver;
+
+pub use self::domain::*;
+pub use self::solver::*;

@@ -17,3 +17,4 @@
 //! structures you are likely to always want to use when working with maxicp-rs.
 
 pub use crate::state::*;
+pub use crate::engine::*;
