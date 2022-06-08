@@ -21,15 +21,14 @@ maxicp (https://pschaus.github.io/maxicp/).
 * [ ] Engine
     * [X] Implement bool var 
     * [X] Implement int variables
-	* [ ] Implement sequence variables
 	* [X] Define constraint and propagator traits
 	* [ ] Implement the basic constraints
     * [ ] Implement the solver with propagation fixpoint
 * [ ] Search
     * [ ] Implement search strategies
 * [ ] Bindings
-	* [ ] For C++ (with cxx)
 	* [ ] For Python3 (with pyo3)
+    * [ ] For C++ (with cxx)
 	* [ ] For Java (maybe consider)
 
 
@@ -41,3 +40,5 @@ maxicp (https://pschaus.github.io/maxicp/).
     * [ ] Implement reversible bitset
 	* [ ] Implement reversible tri partition 
 	* [ ] Implement reversible stack (push only)
+* [ ] Engine
+    * [ ] Implement sequence variables
