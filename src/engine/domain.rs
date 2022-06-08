@@ -154,6 +154,14 @@ impl<T: StateManager> DomainStoreImpl<T> {
     pub fn new(state: T) -> Self {
         Self::from(state)
     }
+    /// Returns a reference to the underlying state manager
+    pub fn state_manager(&self) -> &T {
+        &self.state
+    }
+    /// Returns a mutable reference to the underlying state manager
+    pub fn state_manager_mut(&mut self) -> &mut T {
+        &mut self.state
+    }
 }
 
 impl<T: StateManager> From<T> for DomainStoreImpl<T> {
