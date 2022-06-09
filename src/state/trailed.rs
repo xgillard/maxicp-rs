@@ -58,8 +58,13 @@ enum TrailEntry {
 /// structure ends up being managed by this struct)
 #[derive(Debug, Clone)]
 pub struct TrailedStateManager {
-    /// At what 'time' was this data modified to the point where it needed being saved ?
+    /// This clock is responsible to tell if a data need to be stored on the
+    /// trail for restitution or not. If a managed resource X is changed and
+    /// X.clock < manager.clock, then it needs to be saved on the trail for
+    /// restitutions. Once the managed resource is updated,
+    /// X.clock = manager.clock.
     ///
+    /// This clock is incremented at each call to `save_state()`
     /// # Note:
     /// This data was referred to as 'magic' in minicp and maxicp. Still I like to
     /// convey the idea that 'magic' is actually a monotonic clock  indicating the validity
@@ -137,6 +142,8 @@ impl SaveAndRestore for TrailedStateManager {
     }
     /// Restores the previous state
     fn restore_state(&mut self) {
+        debug_assert!(self.levels.len() > 1);
+
         let level = self
             .levels
             .pop()
@@ -168,8 +175,13 @@ impl SaveAndRestore for TrailedStateManager {
 struct IntState {
     /// The identifier of the managed resource
     id: ReversibleInt,
-    /// At what 'time' was this data modified to the point where it needed being saved ?
+    /// This clock is responsible to tell if a data need to be stored on the
+    /// trail for restitution or not. If a managed resource X is changed and
+    /// X.clock < manager.clock, then it needs to be saved on the trail for
+    /// restitutions. Once the managed resource is updated,
+    /// X.clock = manager.clock.
     ///
+    /// This clock is incremented at each call to `save_state()`
     /// # Note:
     /// This data was referred to as 'magic' in minicp and maxicp. Still I like to
     /// convey the idea that 'magic' is actually a monotonic clock  indicating the validity
@@ -583,6 +595,23 @@ impl TrailedStateManager {
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //~~~~ UT BOOLEAN ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#[cfg(test)]
+mod test_saveandrestore {
+    use super::*;
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic]
+    fn can_not_pop_root_level() {
+        let mut mgr = TrailedStateManager::new();
+        let a = mgr.manage_bool(true);
+
+        mgr.save_state();
+        mgr.set_bool(a, false);
+        mgr.restore_state();
+        mgr.restore_state();
+    }
+}
 #[cfg(test)]
 mod tests_manager_bool {
     use super::*;

@@ -87,6 +87,8 @@ pub trait ConstraintStore {
     fn install(&mut self, modeling_construct: &dyn ModelingConstruct);
     /// Posts the given propagator but does  
     fn post(&mut self, propagator: Box<dyn Propagator>) -> Constraint;
+    /// Schedules the execution of a given constraint (propagator)
+    fn schedule(&mut self, constraint: Constraint);
     /// Tells the solver that the given constraint should be propagated whenever
     /// the condition is satisfied
     fn propagate_on(&mut self, constraint: Constraint, cond: DomainCondition);
@@ -221,7 +223,9 @@ impl<T: StateManager> SaveAndRestore for CpModelImpl<T> {
                 }
             }
         }
+
         self.conditions.truncate(cond_sz);
+        self.scheduled.clear();
     }
 }
 //------------------------------------------------------------------------------
@@ -235,6 +239,10 @@ impl<T: StateManager> ConstraintStore for CpModelImpl<T> {
     fn post(&mut self, propagator: Box<dyn Propagator>) -> Constraint {
         self.propagators.push(propagator);
         Constraint(self.inc_prop_size() - 1)
+    }
+
+    fn schedule(&mut self, constraint: Constraint) {
+        self.scheduled.insert(constraint);
     }
 
     fn propagate_on(&mut self, constraint: Constraint, cond: DomainCondition) {
@@ -263,7 +271,7 @@ impl<T: StateManager> ConstraintStore for CpModelImpl<T> {
 
     fn fixpoint(&mut self) -> CPResult<()> {
         loop {
-            self.schedule();
+            self.schedule_relevant();
             let must_stop = self.scheduled.is_empty();
             if must_stop {
                 return CPResult::Ok(());
@@ -282,18 +290,8 @@ impl<T: StateManager> ConstraintStore for CpModelImpl<T> {
 }
 
 impl<T: StateManager> From<T> for CpModelImpl<T> {
-    fn from(mut sm: T) -> Self {
-        let conditions_sz = sm.manage_int(0);
-        let propagator_sz = sm.manage_int(0);
-        Self {
-            domains: DomainStoreImpl::from(sm),
-            listeners: Default::default(),
-            propagators: Default::default(),
-            conditions: Default::default(),
-            propagator_sz,
-            conditions_sz,
-            scheduled: Default::default(),
-        }
+    fn from(sm: T) -> Self {
+        Self::new(sm)
     }
 }
 impl<T: StateManager + Default> Default for CpModelImpl<T> {
@@ -306,8 +304,18 @@ impl<T: StateManager + Default> Default for CpModelImpl<T> {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 impl<T: StateManager> CpModelImpl<T> {
     /// Creates a new instance of the constraint store
-    pub fn new(sm: T) -> Self {
-        Self::from(sm)
+    pub fn new(mut sm: T) -> Self {
+        let conditions_sz = sm.manage_int(0);
+        let propagator_sz = sm.manage_int(0);
+        Self {
+            domains: DomainStoreImpl::from(sm),
+            listeners: Default::default(),
+            propagators: Default::default(),
+            conditions: Default::default(),
+            propagator_sz,
+            conditions_sz,
+            scheduled: Default::default(),
+        }
     }
     /// Utility to reach the underlying state manager
     fn sm(&self) -> &T {
@@ -338,7 +346,7 @@ impl<T: StateManager> CpModelImpl<T> {
 
     /// Schedules the execution of all the relevant propagators and clears the
     /// current set of events
-    fn schedule(&mut self) {
+    fn schedule_relevant(&mut self) {
         let schedule = &mut self.scheduled;
         let domains = &mut self.domains;
         let listeners = &self.listeners;
@@ -375,8 +383,15 @@ impl<T: StateManager> CpModelImpl<T> {
     }
 }
 
+// #############################################################################
+// ### UNIT TESTS ##############################################################
+// #############################################################################
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//~~~~ QUICK CHECK THAT IT WORKS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #[cfg(test)]
-mod tests {
+mod test_default_model_quickcheck {
     use crate::{
         ConstraintStore, DefaultCpModel, DomainCondition, DomainStore, Inconsistency,
         SaveAndRestore,
@@ -417,5 +432,1057 @@ mod tests {
 
         assert_eq!(5, solver.size(x));
         assert_eq!(2, solver.size(y));
+    }
+}
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//~~~~ DOMAINSTORE ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// The implementation of the domainstore trait by the cpmodelimpl is delegated
+// to the `domains` field of that struct. As annoying as it is, this test suite
+// is largely copy-pasted from the test suite of domainstoreimpl because, in
+// the end, it tests the same behavior. It does however not test any behavior
+// related to the occurence of domain events since these are dealt with by the
+// domainbroker responsibility of the domainstoreimpl.
+#[cfg(test)]
+mod test_default_model_domainstore {
+    use crate::{DefaultCpModel, DomainStore, Inconsistency, SaveAndRestore};
+
+    #[test]
+    fn min_yields_the_minimum_of_domain() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert_eq!(Some(5), ds.min(x));
+        assert_eq!(Some(0), ds.min(y));
+        assert_eq!(Some(0), ds.min(z));
+    }
+    #[test]
+    fn min_yields_the_minimum_of_domain_after_update() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert_eq!(Ok(()), ds.remove_below(x, 7));
+        assert_eq!(Ok(()), ds.remove_below(y, 3));
+        assert_eq!(Ok(()), ds.remove_below(z, 1));
+
+        assert_eq!(Some(7), ds.min(x));
+        assert_eq!(Some(3), ds.min(y));
+        assert_eq!(Some(1), ds.min(z));
+    }
+    #[test]
+    fn min_yields_none_when_domain_is_empty() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert_eq!(Err(Inconsistency), ds.remove_below(x, 20));
+        assert_eq!(Err(Inconsistency), ds.remove_below(y, 20));
+        assert_eq!(Err(Inconsistency), ds.remove_below(z, 20));
+
+        assert_eq!(None, ds.min(x));
+        assert_eq!(None, ds.min(y));
+        assert_eq!(None, ds.min(z));
+    }
+
+    #[test]
+    fn max_yields_the_maximum_of_domain() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert_eq!(Some(10), ds.max(x));
+        assert_eq!(Some(5), ds.max(y));
+        assert_eq!(Some(1), ds.max(z));
+    }
+    #[test]
+    fn max_yields_the_maximum_of_domain_after_update() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert_eq!(Ok(()), ds.remove_above(x, 7));
+        assert_eq!(Ok(()), ds.remove_above(y, 3));
+        assert_eq!(Ok(()), ds.remove_above(z, 0));
+
+        assert_eq!(Some(7), ds.max(x));
+        assert_eq!(Some(3), ds.max(y));
+        assert_eq!(Some(0), ds.max(z));
+    }
+    #[test]
+    fn max_yields_none_when_domain_is_empty() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert_eq!(Err(Inconsistency), ds.remove_above(x, -1));
+        assert_eq!(Err(Inconsistency), ds.remove_above(y, -1));
+        assert_eq!(Err(Inconsistency), ds.remove_above(z, -1));
+
+        assert_eq!(None, ds.max(x));
+        assert_eq!(None, ds.max(y));
+        assert_eq!(None, ds.max(z));
+    }
+
+    #[test]
+    fn size_yields_the_domain_size() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert_eq!(6, ds.size(x));
+        assert_eq!(6, ds.size(y));
+        assert_eq!(2, ds.size(z));
+    }
+    #[test]
+    fn size_yields_the_domain_size_with_hole() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert_eq!(Ok(()), ds.remove(x, 7));
+        assert_eq!(Ok(()), ds.remove(y, 3));
+        assert_eq!(Ok(()), ds.remove(z, 1));
+
+        assert_eq!(5, ds.size(x));
+        assert_eq!(5, ds.size(y));
+        assert_eq!(1, ds.size(z));
+    }
+    #[test]
+    fn size_yields_the_domain_size_change_lb() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert_eq!(Ok(()), ds.remove_below(x, 7));
+        assert_eq!(Ok(()), ds.remove_below(y, 3));
+        assert_eq!(Ok(()), ds.remove_below(z, 1));
+
+        assert_eq!(4, ds.size(x));
+        assert_eq!(3, ds.size(y));
+        assert_eq!(1, ds.size(z));
+    }
+    #[test]
+    fn size_yields_the_domain_size_change_ub() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert_eq!(Ok(()), ds.remove_above(x, 7));
+        assert_eq!(Ok(()), ds.remove_above(y, 3));
+        assert_eq!(Ok(()), ds.remove_above(z, 0));
+
+        assert_eq!(3, ds.size(x));
+        assert_eq!(4, ds.size(y));
+        assert_eq!(1, ds.size(z));
+    }
+
+    #[test]
+    fn contains_returns_false_for_value_less_than_lb() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert!(!ds.contains(x, -5));
+        assert!(!ds.contains(y, -5));
+        assert!(!ds.contains(z, -5));
+    }
+    #[test]
+    fn contains_returns_true_for_lb() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert!(ds.contains(x, 5));
+        assert!(ds.contains(y, 0));
+        assert!(ds.contains(z, 0));
+    }
+    #[test]
+    fn contains_returns_false_for_value_gt_than_ub() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert!(!ds.contains(x, 45));
+        assert!(!ds.contains(y, 45));
+        assert!(!ds.contains(z, 45));
+    }
+    #[test]
+    fn contains_returns_true_for_ub() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert!(ds.contains(x, 10));
+        assert!(ds.contains(y, 5));
+        assert!(ds.contains(z, 1));
+    }
+    #[test]
+    fn contains_returns_false_for_hole() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert_eq!(Ok(()), ds.remove(x, 7));
+        assert_eq!(Ok(()), ds.remove(y, 3));
+        assert_eq!(Ok(()), ds.remove(z, 0));
+
+        assert!(!ds.contains(x, 7));
+        assert!(!ds.contains(y, 3));
+        assert!(!ds.contains(z, 0));
+    }
+    #[test]
+    fn contains_returns_true_if_in_set() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert_eq!(Ok(()), ds.remove(x, 7));
+        assert_eq!(Ok(()), ds.remove(y, 3));
+        assert_eq!(Ok(()), ds.remove(z, 0));
+
+        assert!(ds.contains(x, 6));
+        assert!(ds.contains(y, 2));
+        assert!(ds.contains(z, 1));
+    }
+
+    #[test]
+    fn fix_fails_when_lower_than_lb() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert_eq!(Err(Inconsistency), ds.fix(x, -10));
+        assert_eq!(Err(Inconsistency), ds.fix(y, -10));
+        assert_eq!(Err(Inconsistency), ds.fix(z, -10));
+    }
+    #[test]
+    fn fix_fails_when_higher_than_ub() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert_eq!(Err(Inconsistency), ds.fix(x, 20));
+        assert_eq!(Err(Inconsistency), ds.fix(y, 20));
+        assert_eq!(Err(Inconsistency), ds.fix(z, 20));
+    }
+    #[test]
+    fn fix_fails_when_hole() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert_eq!(Ok(()), ds.remove(x, 7));
+        assert_eq!(Ok(()), ds.remove(y, 3));
+        assert_eq!(Ok(()), ds.remove(z, 0));
+
+        assert_eq!(Err(Inconsistency), ds.fix(x, 7));
+        assert_eq!(Err(Inconsistency), ds.fix(y, 3));
+        assert_eq!(Err(Inconsistency), ds.fix(z, 0));
+    }
+    #[test]
+    fn fix_succeeds_when_in_domain() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert_eq!(Ok(()), ds.fix(x, 7));
+        assert_eq!(Ok(()), ds.fix(y, 3));
+        assert_eq!(Ok(()), ds.fix(z, 0));
+    }
+
+    #[test]
+    fn remove_has_no_effect_when_out_of_domain() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert_eq!(Ok(()), ds.remove(x, -10));
+        assert_eq!(Ok(()), ds.remove(y, -10));
+        assert_eq!(Ok(()), ds.remove(z, -10));
+    }
+
+    #[test]
+    fn remove_fails_when_it_makes_domain_empty() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert_eq!(Ok(()), ds.remove_below(x, 7));
+        assert_eq!(Ok(()), ds.remove_below(y, 3));
+        assert_eq!(Ok(()), ds.remove_below(z, 0));
+
+        assert_eq!(Ok(()), ds.remove_above(x, 7));
+        assert_eq!(Ok(()), ds.remove_above(y, 3));
+        assert_eq!(Ok(()), ds.remove_above(z, 0));
+
+        assert_eq!(Err(Inconsistency), ds.remove(x, 7));
+        assert_eq!(Err(Inconsistency), ds.remove(y, 3));
+        assert_eq!(Err(Inconsistency), ds.remove(z, 0));
+    }
+    #[test]
+    fn remove_punches_a_hole_when_in_the_middle() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert_eq!(Ok(()), ds.remove(x, 7));
+        assert_eq!(Ok(()), ds.remove(y, 3));
+        assert_eq!(Ok(()), ds.remove(z, 0));
+    }
+
+    #[test]
+    fn remove_may_adapt_minimum() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert_eq!(Ok(()), ds.remove(x, 5));
+        assert_eq!(Ok(()), ds.remove(y, 0));
+        assert_eq!(Ok(()), ds.remove(z, 0));
+
+        assert_eq!(Some(6), ds.min(x));
+        assert_eq!(Some(1), ds.min(y));
+        assert_eq!(Some(1), ds.min(z));
+
+        assert_eq!(Some(10), ds.max(x));
+        assert_eq!(Some(5), ds.max(y));
+        assert_eq!(Some(1), ds.max(z));
+    }
+
+    #[test]
+    fn remove_may_adapt_maximum() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert_eq!(Ok(()), ds.remove(x, 10));
+        assert_eq!(Ok(()), ds.remove(y, 5));
+        assert_eq!(Ok(()), ds.remove(z, 1));
+
+        assert_eq!(Some(5), ds.min(x));
+        assert_eq!(Some(0), ds.min(y));
+        assert_eq!(Some(0), ds.min(z));
+
+        assert_eq!(Some(9), ds.max(x));
+        assert_eq!(Some(4), ds.max(y));
+        assert_eq!(Some(0), ds.max(z));
+    }
+
+    #[test]
+    fn remove_above_has_no_effect_when_out_of_domain() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert_eq!(Ok(()), ds.remove_above(x, 20));
+        assert_eq!(Ok(()), ds.remove_above(y, 20));
+        assert_eq!(Ok(()), ds.remove_above(z, 20));
+    }
+
+    #[test]
+    fn remove_above_fails_when_it_makes_domain_empty() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert_eq!(Err(Inconsistency), ds.remove_above(x, -10));
+        assert_eq!(Err(Inconsistency), ds.remove_above(y, -10));
+        assert_eq!(Err(Inconsistency), ds.remove_above(z, -10));
+    }
+
+    #[test]
+    fn remove_above_may_adapt_maximum() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert_eq!(Ok(()), ds.remove_above(x, 7));
+        assert_eq!(Ok(()), ds.remove_above(y, 3));
+        assert_eq!(Ok(()), ds.remove_above(z, 0));
+
+        assert_eq!(Some(5), ds.min(x));
+        assert_eq!(Some(0), ds.min(y));
+        assert_eq!(Some(0), ds.min(z));
+
+        assert_eq!(Some(7), ds.max(x));
+        assert_eq!(Some(3), ds.max(y));
+        assert_eq!(Some(0), ds.max(z));
+    }
+
+    #[test]
+    fn remove_below_has_no_effect_when_out_of_domain() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert_eq!(Ok(()), ds.remove_below(x, -20));
+        assert_eq!(Ok(()), ds.remove_below(y, -20));
+        assert_eq!(Ok(()), ds.remove_below(z, -20));
+    }
+
+    #[test]
+    fn remove_below_fails_when_it_makes_domain_empty() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert_eq!(Err(Inconsistency), ds.remove_below(x, 20));
+        assert_eq!(Err(Inconsistency), ds.remove_below(y, 20));
+        assert_eq!(Err(Inconsistency), ds.remove_below(z, 20));
+    }
+
+    #[test]
+    fn remove_below_may_adapt_minimum() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert_eq!(Ok(()), ds.remove_below(x, 7));
+        assert_eq!(Ok(()), ds.remove_below(y, 3));
+        assert_eq!(Ok(()), ds.remove_below(z, 1));
+
+        assert_eq!(Some(7), ds.min(x));
+        assert_eq!(Some(3), ds.min(y));
+        assert_eq!(Some(1), ds.min(z));
+
+        assert_eq!(Some(10), ds.max(x));
+        assert_eq!(Some(5), ds.max(y));
+        assert_eq!(Some(1), ds.max(z));
+    }
+
+    #[test]
+    fn is_fixed_only_when_one_value_left() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(0, 5);
+        let z = ds.new_bool_var();
+
+        assert!(!ds.is_fixed(x));
+        assert!(!ds.is_fixed(y));
+        assert!(!ds.is_fixed(z));
+        ds.save_state();
+
+        assert_eq!(Ok(()), ds.fix(x, 7));
+        assert_eq!(Ok(()), ds.fix(y, 3));
+        assert_eq!(Ok(()), ds.fix(z, 0));
+        assert!(ds.is_fixed(x));
+        assert!(ds.is_fixed(y));
+        assert!(ds.is_fixed(z));
+        ds.restore_state();
+
+        assert!(!ds.is_fixed(x));
+        assert!(!ds.is_fixed(y));
+        assert!(!ds.is_fixed(z));
+    }
+    #[test]
+    fn is_true_iff_fixed_and_true() {
+        let mut ds = DefaultCpModel::default();
+        let z = ds.new_bool_var();
+
+        assert!(!ds.is_true(z));
+        ds.save_state();
+
+        assert_eq!(Ok(()), ds.fix(z, 0));
+        assert!(!ds.is_true(z));
+        ds.restore_state();
+
+        assert!(!ds.is_true(z));
+        assert_eq!(Ok(()), ds.fix(z, 1));
+        assert!(ds.is_true(z));
+    }
+    #[test]
+    fn is_false_iff_fixed_and_false() {
+        let mut ds = DefaultCpModel::default();
+        let z = ds.new_bool_var();
+
+        assert!(!ds.is_false(z));
+        ds.save_state();
+
+        assert_eq!(Ok(()), ds.fix(z, 0));
+        assert!(ds.is_false(z));
+        ds.restore_state();
+
+        assert!(!ds.is_false(z));
+        assert_eq!(Ok(()), ds.fix(z, 1));
+        assert!(!ds.is_false(z));
+    }
+}
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//~~~~ SAVE AND RESTORE ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// A large fraction of the save and restore behavior is delegated to the
+// `domains` field of the cpmodelimpl. However, the model **does** add some
+// behavior and acts as a decorator to the domainstoreimpl. This test suite
+// largely copies the one from domainstoreimpl and adds some additional checks
+// that are specific to the **decorations** added by the cpmodelimpl.
+#[cfg(test)]
+mod test_default_model_saveandstore {
+    use crate::Inconsistency;
+
+    use super::*;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    #[test]
+    fn save_and_restore_state_should_work_together() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_bool_var();
+
+        assert!(!ds.is_fixed(x));
+        assert!(!ds.is_fixed(y));
+        assert_eq!(ds.size(x), 6);
+        assert_eq!(ds.size(y), 2);
+        ds.save_state();
+
+        assert_eq!(ds.fix(x, 9), Ok(()));
+        assert_eq!(ds.fix_bool(y, false), Ok(()));
+
+        assert!(ds.is_fixed(x));
+        assert!(ds.is_fixed(y));
+        assert_eq!(ds.size(x), 1);
+        assert_eq!(ds.size(y), 1);
+
+        assert_eq!(ds.min(x), Some(9));
+        assert!(ds.is_false(y));
+
+        ds.restore_state();
+        assert!(!ds.is_fixed(x));
+        assert!(!ds.is_fixed(y));
+        assert_eq!(ds.size(x), 6);
+        assert_eq!(ds.size(y), 2);
+    }
+
+    /*
+    Unfortunately, these are best tested together (long-ish test)
+    - restore drops all stale propagators
+    - a stale propagator is never fired after having been dropped on restore
+    - restore detaches all stale propagators
+    - restore drops all stale conditions
+    */
+    #[test]
+    fn restore_drops_all_stale_propagators_and_conditions() {
+        let mut ds = DefaultCpModel::default();
+        let x = ds.new_int_var(5, 10);
+        let y = ds.new_int_var(5, 10);
+        let z = ds.new_int_var(5, 10);
+
+        let flag_x = Rc::new(RefCell::new(false));
+        let flag_y = Rc::new(RefCell::new(false));
+        let flag_z = Rc::new(RefCell::new(false));
+
+        // constraint x is created and installed at root level. it is never
+        // removed, and it is fired every time the domain of variable x is
+        // changed.
+        let rc_flag_x = flag_x.clone();
+        let constraint_x = ds.post(Box::new(move |_: &mut dyn DomainStore| {
+            *rc_flag_x.borrow_mut() = true;
+            Ok(())
+        }));
+        ds.propagate_on(constraint_x, DomainCondition::DomainChanged(x));
+        ds.save_state();
+
+        // checks
+        assert_eq!(1, ds.prop_size());
+        assert_eq!(1, ds.cond_size());
+        assert_eq!(1, ds.propagators.len());
+        assert_eq!(1, ds.conditions.len());
+        //
+        assert_eq!(Ok(()), ds.remove(x, 5));
+        assert_eq!(Ok(()), ds.remove(y, 5));
+        assert_eq!(Ok(()), ds.remove(z, 5));
+        assert_eq!(Ok(()), ds.fixpoint());
+        assert!(*flag_x.borrow()); // x was triggered
+        assert!(!*flag_y.borrow()); // y was not
+        assert!(!*flag_z.borrow()); // z was not
+        *flag_x.borrow_mut() = false;
+        //
+
+        // constraint y is created at first level but not installed untill
+        // level 2. reverting back to level 1 from level 2 must not drop the
+        // propagator but it should make it stop reacting to changes in the
+        // domain of y
+        let rc_flag_y = flag_y.clone();
+        let constraint_y = ds.post(Box::new(move |_: &mut dyn DomainStore| {
+            *rc_flag_y.borrow_mut() = true;
+            Ok(())
+        }));
+        ds.save_state();
+
+        // checks
+        assert_eq!(2, ds.prop_size());
+        assert_eq!(1, ds.cond_size());
+        assert_eq!(2, ds.propagators.len());
+        assert_eq!(1, ds.conditions.len());
+
+        //
+        assert_eq!(Ok(()), ds.remove(x, 6));
+        assert_eq!(Ok(()), ds.remove(y, 6));
+        assert_eq!(Ok(()), ds.remove(z, 6));
+        assert_eq!(Ok(()), ds.fixpoint());
+        assert!(*flag_x.borrow()); // x was triggered
+        assert!(!*flag_y.borrow()); // y was not
+        assert!(!*flag_z.borrow()); // z was not
+        *flag_x.borrow_mut() = false;
+        //
+
+        // activate constraint_y
+        ds.propagate_on(constraint_y, DomainCondition::DomainChanged(y));
+
+        // constraint z is created and installed at level 2. it must be deleted
+        // completely upon restoration
+        let rc_flag_z = flag_z.clone();
+        let constraint_z = ds.post(Box::new(move |_: &mut dyn DomainStore| {
+            *rc_flag_z.borrow_mut() = true;
+            Ok(())
+        }));
+        ds.propagate_on(constraint_z, DomainCondition::IsFixed(z));
+        ds.save_state();
+
+        ds.propagate_on(constraint_z, DomainCondition::DomainChanged(z));
+        // We are at level 3 here
+        // checks
+        assert_eq!(3, ds.prop_size());
+        assert_eq!(4, ds.cond_size());
+        assert_eq!(3, ds.propagators.len());
+        assert_eq!(4, ds.conditions.len());
+        //
+        assert_eq!(Ok(()), ds.remove(x, 7));
+        assert_eq!(Ok(()), ds.remove(y, 7));
+        assert_eq!(Ok(()), ds.remove(z, 7));
+        assert_eq!(Ok(()), ds.fixpoint());
+        assert!(*flag_x.borrow()); // x was triggered
+        assert!(*flag_y.borrow()); // y was not
+        assert!(*flag_z.borrow()); // z was not
+        *flag_x.borrow_mut() = false;
+        *flag_y.borrow_mut() = false;
+        *flag_z.borrow_mut() = false;
+        //
+
+        ds.restore_state();
+        // We are at level 2 -> domain changed no longer attached to z
+        assert_eq!(3, ds.prop_size());
+        assert_eq!(3, ds.cond_size());
+        assert_eq!(3, ds.propagators.len());
+        assert_eq!(3, ds.conditions.len());
+        //
+        assert_eq!(Ok(()), ds.remove(x, 8));
+        assert_eq!(Ok(()), ds.remove(y, 8));
+        assert_eq!(Ok(()), ds.remove(z, 8));
+        assert_eq!(Ok(()), ds.fixpoint());
+        assert!(*flag_x.borrow()); // x was triggered
+        assert!(*flag_y.borrow()); // y was not
+        assert!(!*flag_z.borrow()); // z was not
+        *flag_x.borrow_mut() = false;
+        *flag_y.borrow_mut() = false;
+        *flag_z.borrow_mut() = false;
+
+        // We are at level 2 -> fixed event still attached to z
+        assert_eq!(Ok(()), ds.remove(x, 7));
+        assert_eq!(Ok(()), ds.remove(y, 7));
+        assert_eq!(Ok(()), ds.fix(z, 7));
+        assert_eq!(Ok(()), ds.fixpoint());
+        assert!(*flag_x.borrow()); // x was triggered
+        assert!(*flag_y.borrow()); // y was not
+        assert!(*flag_z.borrow()); // z was not
+        *flag_x.borrow_mut() = false;
+        *flag_y.borrow_mut() = false;
+        *flag_z.borrow_mut() = false;
+
+        // Level 1: there are two propagators left but only one is active
+        ds.restore_state();
+        // checks
+        assert_eq!(2, ds.prop_size());
+        assert_eq!(1, ds.cond_size());
+        assert_eq!(2, ds.propagators.len());
+        assert_eq!(1, ds.conditions.len());
+        //
+        assert_eq!(Ok(()), ds.remove(x, 7));
+        assert_eq!(Ok(()), ds.remove(y, 7));
+        assert_eq!(Ok(()), ds.remove(z, 7));
+        assert_eq!(Ok(()), ds.fixpoint());
+        assert!(*flag_x.borrow()); // x was triggered
+        assert!(!*flag_y.borrow()); // y was not
+        assert!(!*flag_z.borrow()); // z was not
+        *flag_x.borrow_mut() = false;
+        *flag_y.borrow_mut() = false;
+        *flag_z.borrow_mut() = false;
+        //
+
+        // Level 0: there only one propagator left
+        ds.restore_state();
+        // checks
+        assert_eq!(1, ds.prop_size());
+        assert_eq!(1, ds.cond_size());
+        assert_eq!(1, ds.propagators.len());
+        assert_eq!(1, ds.conditions.len());
+        //
+        assert_eq!(Ok(()), ds.remove(x, 7));
+        assert_eq!(Ok(()), ds.remove(y, 7));
+        assert_eq!(Ok(()), ds.remove(z, 7));
+        assert_eq!(Ok(()), ds.fixpoint());
+        assert!(*flag_x.borrow()); // x was triggered
+        assert!(!*flag_y.borrow()); // y was not
+        assert!(!*flag_z.borrow()); // z was not
+        *flag_x.borrow_mut() = false;
+        *flag_y.borrow_mut() = false;
+        *flag_z.borrow_mut() = false;
+        //
+    }
+
+    #[test]
+    fn restore_unschedules_all_scheduled_propagators() {
+        let mut model = DefaultCpModel::default();
+        let c = model.post(Box::new(move |_: &mut dyn DomainStore| Err(Inconsistency)));
+        model.save_state();
+        model.schedule(c);
+        model.restore_state();
+        assert_eq!(Ok(()), model.fixpoint());
+    }
+}
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//~~~~ CONSTRAINTSTORE ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#[cfg(test)]
+mod test_default_model_constraintstore {
+    use crate::Inconsistency;
+
+    use super::*;
+    use std::cell::RefCell;
+
+    struct MockConstruct {
+        installed: RefCell<bool>,
+    }
+    impl MockConstruct {
+        fn new() -> Self {
+            Self {
+                installed: RefCell::new(false),
+            }
+        }
+    }
+    impl ModelingConstruct for MockConstruct {
+        fn install(&self, _cstore: &mut dyn crate::ConstraintStore) {
+            *self.installed.borrow_mut() = true;
+        }
+    }
+    #[test]
+    fn install_simply_delegates_to_model_construct() {
+        let mut model = DefaultCpModel::default();
+        let construct = MockConstruct::new();
+
+        model.install(&construct);
+        assert!(*construct.installed.borrow());
+    }
+    #[test]
+    fn post_adds_a_propagator_but_does_not_attach_it() {
+        let mut model = DefaultCpModel::default();
+        let x = model.new_int_var(0, 9);
+        assert_eq!(0, model.prop_size());
+        assert_eq!(0, model.cond_size());
+
+        model.post(Box::new(move |_: &mut dyn DomainStore| Err(Inconsistency)));
+
+        assert_eq!(1, model.prop_size());
+        assert_eq!(0, model.cond_size());
+
+        assert_eq!(Ok(()), model.remove(x, 5));
+        assert_eq!(Ok(()), model.fixpoint());
+    }
+    #[test]
+    fn schedule_prepares_constraint_for_execution() {
+        let mut model = DefaultCpModel::default();
+        let x = model.new_int_var(0, 9);
+
+        let c = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.fix(x, 7)));
+
+        // not scheduled yet, fixpoint wont change domain
+        assert_eq!(Ok(()), model.fixpoint());
+        assert_eq!(10, model.size(x));
+        assert_eq!(Some(0), model.min(x));
+        assert_eq!(Some(9), model.max(x));
+
+        // now let us schedule the propagator and the fixpoint will set x to 7
+        model.schedule(c);
+        assert_eq!(Ok(()), model.fixpoint());
+        assert_eq!(1, model.size(x));
+        assert_eq!(Some(7), model.min(x));
+        assert_eq!(Some(7), model.max(x));
+    }
+
+    #[test]
+    fn propagate_on_does_not_insert_duplicate() {
+        let mut model = DefaultCpModel::default();
+        let x = model.new_int_var(0, 9);
+        let c = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.fix(x, 7)));
+
+        model.propagate_on(c, DomainCondition::IsFixed(x));
+        assert_eq!(1, model.cond_size());
+
+        model.propagate_on(c, DomainCondition::IsFixed(x));
+        model.propagate_on(c, DomainCondition::IsFixed(x));
+        assert_eq!(1, model.cond_size());
+
+        model.save_state();
+        model.propagate_on(c, DomainCondition::DomainChanged(x));
+        assert_eq!(2, model.cond_size());
+
+        model.propagate_on(c, DomainCondition::DomainChanged(x));
+        model.propagate_on(c, DomainCondition::DomainChanged(x));
+        assert_eq!(2, model.cond_size());
+
+        model.save_state();
+        model.propagate_on(c, DomainCondition::MaximumChanged(x));
+        assert_eq!(3, model.cond_size());
+
+        model.propagate_on(c, DomainCondition::MaximumChanged(x));
+        model.propagate_on(c, DomainCondition::MaximumChanged(x));
+        assert_eq!(3, model.cond_size());
+
+        model.save_state();
+        model.propagate_on(c, DomainCondition::MinimumChanged(x));
+        assert_eq!(4, model.cond_size());
+
+        model.propagate_on(c, DomainCondition::MinimumChanged(x));
+        model.propagate_on(c, DomainCondition::MinimumChanged(x));
+        assert_eq!(4, model.cond_size());
+    }
+    #[test]
+    fn different_constraints_listening_on_the_same_event_is_not_a_duplicate() {
+        let mut model = DefaultCpModel::default();
+        let x = model.new_int_var(0, 9);
+        let c = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.fix(x, 7)));
+        let d = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.fix(x, 7)));
+
+        model.propagate_on(c, DomainCondition::IsFixed(x));
+        model.propagate_on(d, DomainCondition::IsFixed(x));
+        assert_eq!(2, model.cond_size());
+    }
+    #[test]
+    fn propagate_on_fixed_does_nothing_as_it_is_not_fixed() {
+        let mut model = DefaultCpModel::default();
+        let x = model.new_int_var(0, 9);
+
+        let c = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.fix(x, 7)));
+        model.propagate_on(c, DomainCondition::IsFixed(x));
+
+        // not scheduled yet, fixpoint wont change domain
+        assert_eq!(Ok(()), model.fixpoint());
+        assert_eq!(10, model.size(x));
+        assert_eq!(Some(0), model.min(x));
+        assert_eq!(Some(9), model.max(x));
+
+        assert_eq!(Ok(()), model.remove(x, 5));
+        assert_eq!(Ok(()), model.fixpoint());
+        assert_eq!(9, model.size(x));
+        assert_eq!(Some(0), model.min(x));
+        assert_eq!(Some(9), model.max(x));
+    }
+    #[test]
+    fn propagate_on_fixed_propagates_when_var_is_fixed() {
+        let mut model = DefaultCpModel::default();
+        let x = model.new_int_var(0, 9);
+
+        let c = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.fix(x, 7)));
+        model.propagate_on(c, DomainCondition::IsFixed(x));
+        assert_eq!(Ok(()), model.fix(x, 5));
+        assert_eq!(Err(Inconsistency), model.fixpoint());
+    }
+
+    #[test]
+    fn propagate_on_min_change_does_nothing_unless_minimum_changes() {
+        let mut model = DefaultCpModel::default();
+        let x = model.new_int_var(0, 9);
+
+        let c = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.fix(x, 7)));
+        model.propagate_on(c, DomainCondition::MinimumChanged(x));
+
+        // not scheduled yet, fixpoint wont change domain
+        assert_eq!(Ok(()), model.fixpoint());
+        assert_eq!(10, model.size(x));
+        assert_eq!(Some(0), model.min(x));
+        assert_eq!(Some(9), model.max(x));
+
+        // minimum has not changed, it does not execute
+        assert_eq!(Ok(()), model.remove_above(x, 7));
+        assert_eq!(Ok(()), model.fixpoint());
+        assert_eq!(8, model.size(x));
+        assert_eq!(Some(0), model.min(x));
+        assert_eq!(Some(7), model.max(x));
+
+        // minimum has changed, it does execute
+        assert_eq!(Ok(()), model.remove_below(x, 3));
+        assert_eq!(Ok(()), model.fixpoint());
+        assert_eq!(1, model.size(x));
+        assert_eq!(Some(7), model.min(x));
+        assert_eq!(Some(7), model.max(x));
+    }
+    #[test]
+    fn propagate_on_max_change_does_nothing_unless_maximum_changes() {
+        let mut model = DefaultCpModel::default();
+        let x = model.new_int_var(0, 9);
+
+        let c = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.fix(x, 7)));
+        model.propagate_on(c, DomainCondition::MaximumChanged(x));
+
+        // not scheduled yet, fixpoint wont change domain
+        assert_eq!(Ok(()), model.fixpoint());
+        assert_eq!(10, model.size(x));
+        assert_eq!(Some(0), model.min(x));
+        assert_eq!(Some(9), model.max(x));
+
+        // minimum has not changed, it does not execute
+        assert_eq!(Ok(()), model.remove_below(x, 3));
+        assert_eq!(Ok(()), model.fixpoint());
+        assert_eq!(7, model.size(x));
+        assert_eq!(Some(3), model.min(x));
+        assert_eq!(Some(9), model.max(x));
+
+        // minimum has changed, it does execute
+        assert_eq!(Ok(()), model.remove_above(x, 8));
+        assert_eq!(Ok(()), model.fixpoint());
+        assert_eq!(1, model.size(x));
+        assert_eq!(Some(7), model.min(x));
+        assert_eq!(Some(7), model.max(x));
+    }
+    #[test]
+    fn propagate_on_change_reacts_on_every_change() {
+        let mut model = DefaultCpModel::default();
+        let x = model.new_int_var(0, 9);
+
+        let c = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.fix(x, 7)));
+        model.propagate_on(c, DomainCondition::DomainChanged(x));
+
+        // not scheduled yet, fixpoint wont change domain
+        assert_eq!(Ok(()), model.fixpoint());
+        assert_eq!(10, model.size(x));
+        assert_eq!(Some(0), model.min(x));
+        assert_eq!(Some(9), model.max(x));
+
+        // minimum has not changed, it does not execute
+        assert_eq!(Ok(()), model.remove(x, 3));
+        assert_eq!(Ok(()), model.fixpoint());
+        assert_eq!(1, model.size(x));
+        assert_eq!(Some(7), model.min(x));
+        assert_eq!(Some(7), model.max(x));
+    }
+
+    #[test]
+    fn fixpoint_runs_propagators_until_it_reaches_fixpoint() {
+        let mut model = DefaultCpModel::default();
+        let x = model.new_int_var(0, 9);
+        let y = model.new_int_var(0, 9);
+        let z = model.new_int_var(0, 9);
+
+        let boot = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.remove(x, 5)));
+        model.schedule(boot);
+
+        let cx = model.post(Box::new(move |dom: &mut dyn DomainStore| {
+            dom.remove_above(y, 7)
+        }));
+        model.propagate_on(cx, DomainCondition::DomainChanged(x));
+
+        let cy1 = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.fix(y, 3)));
+        model.propagate_on(cy1, DomainCondition::MaximumChanged(y));
+
+        let cy2 = model.post(Box::new(move |dom: &mut dyn DomainStore| {
+            dom.remove_below(z, dom.min(y).unwrap())
+        }));
+        model.propagate_on(cy2, DomainCondition::IsFixed(y));
+
+        let cz = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.fix(z, 3)));
+        model.propagate_on(cz, DomainCondition::MinimumChanged(z));
+
+        assert_eq!(10, model.size(x));
+        assert_eq!(10, model.size(y));
+        assert_eq!(10, model.size(z));
+
+        assert_eq!(Ok(()), model.fixpoint());
+        assert_eq!(9, model.size(x));
+        assert_eq!(1, model.size(y));
+        assert_eq!(1, model.size(z));
+        //
+        assert_eq!(Some(0), model.min(x));
+        assert_eq!(Some(9), model.max(x));
+        assert_eq!(Some(3), model.min(y));
+        assert_eq!(Some(3), model.max(y));
+        assert_eq!(Some(3), model.min(z));
+        assert_eq!(Some(3), model.max(z));
+    }
+
+    #[test]
+    fn fixpoint_stops_running_upon_inconsistency() {
+        let mut model = DefaultCpModel::default();
+        let x = model.new_int_var(0, 9);
+        let y = model.new_int_var(0, 9);
+        let z = model.new_int_var(0, 9);
+
+        let boot = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.remove(x, 5)));
+        model.schedule(boot);
+
+        let cx = model.post(Box::new(move |_: &mut dyn DomainStore| Err(Inconsistency)));
+        model.propagate_on(cx, DomainCondition::DomainChanged(x));
+
+        let cy1 = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.fix(y, 3)));
+        model.propagate_on(cy1, DomainCondition::MaximumChanged(y));
+
+        let cy2 = model.post(Box::new(move |dom: &mut dyn DomainStore| {
+            dom.remove_below(z, dom.min(y).unwrap())
+        }));
+        model.propagate_on(cy2, DomainCondition::IsFixed(y));
+
+        let cz = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.fix(z, 3)));
+        model.propagate_on(cz, DomainCondition::MinimumChanged(z));
+
+        assert_eq!(10, model.size(x));
+        assert_eq!(10, model.size(y));
+        assert_eq!(10, model.size(z));
+
+        assert_eq!(Err(Inconsistency), model.fixpoint());
+        assert_eq!(9, model.size(x));
+        assert_eq!(10, model.size(y));
+        assert_eq!(10, model.size(z));
+        //
+        assert_eq!(Some(0), model.min(x));
+        assert_eq!(Some(9), model.max(x));
+        assert_eq!(Some(0), model.min(y));
+        assert_eq!(Some(9), model.max(y));
+        assert_eq!(Some(0), model.min(z));
+        assert_eq!(Some(9), model.max(z));
     }
 }

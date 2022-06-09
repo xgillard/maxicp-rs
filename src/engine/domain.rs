@@ -377,7 +377,7 @@ impl<T: StateManager> DomainBroker for DomainStoreImpl<T> {
 // ### UNIT TESTS ##############################################################
 // #############################################################################
 #[cfg(test)]
-mod test_domainstoreimpl_domainbroker {
+mod test_domainstoreimpl_saveandrestore {
     use super::*;
 
     #[test]
@@ -409,6 +409,10 @@ mod test_domainstoreimpl_domainbroker {
         assert_eq!(ds.size(x), 6);
         assert_eq!(ds.size(y), 2);
     }
+}
+#[cfg(test)]
+mod test_domainstoreimpl_domainbroker {
+    use super::*;
 
     #[test]
     fn foreach_event_skips_empty_events() {
