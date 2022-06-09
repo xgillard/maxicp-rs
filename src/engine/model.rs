@@ -210,6 +210,7 @@ impl<T: StateManager> SaveAndRestore for CpModelImpl<T> {
 
     fn restore_state(&mut self) {
         self.domains.restore_state();
+        self.domains.clear_events();
 
         let prop_sz = self.prop_size();
         let cond_sz = self.cond_size();
@@ -1173,6 +1174,23 @@ mod test_default_model_saveandstore {
         model.schedule(c);
         model.restore_state();
         assert_eq!(Ok(()), model.fixpoint());
+    }
+
+    #[test]
+    fn restore_clears_all_events() {
+        let mut model = DefaultCpModel::default();
+        let x = model.new_int_var(0, 10);
+        let c = model.post(Box::new(move |dom: &mut dyn DomainStore| {
+            dom.fix(x, 7)
+        }));
+        model.propagate_on(c, DomainCondition::DomainChanged(x));
+        
+        model.save_state();
+        model.remove(x, 4).ok(); // creates an event that will trigger the scheduling of c
+        model.restore_state(); // c should not be scheduled anymore
+        model.fixpoint().ok(); // if c was not scheduled, then x is not fixed
+
+        assert!(!model.is_fixed(x));
     }
 }
 
