@@ -30,8 +30,38 @@ pub struct Inconsistency;
 pub type CPResult<T> = Result<T, Inconsistency>;
 
 /// An integer variable that can be used in a CP model
+/// 
+/// # Note (only useful for the lib maintainer)
+/// 
+/// From a technical point of view, the variables are nothing but integers.
+/// a positive integer means it is a "primitive" variable (an actual object on
+/// the trail) whereas a negative value indicates it is a view.
+/// 
+/// This approach has been preferred over an enum type for two reaons:
+/// - 1. The enum type would have had an infinite size. I could not be 
+///      represented in memory.
+/// - 2. There are only two cases to distinguish: primitive or view. And doing
+///      so keeps the code perfectly portable without bloating the type with
+///      tagged unions.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct Variable(usize);
+pub struct Variable(isize);
+impl Variable {
+    #[inline]
+    /// returns true iff the variable is a primitive variable
+    fn is_primitive(self) -> bool {
+        self.0 > 0
+    }
+    #[inline]
+    /// returns true iff the variable is a view on (one or more) other variables
+    fn is_view(self) -> bool {
+        self.0 < 0
+    }
+    #[inline]
+    /// converts this variable to what could be an offset in a table
+    fn index(self) -> usize {
+        (self.0.abs() - 1) as usize
+    }
+}
 
 /// A domain store is the entity that gives a hook to propagators for modifying
 /// the variables domains. (Note however that no propagator can directly access
@@ -181,12 +211,12 @@ impl<T: StateManager + Default> Default for DomainStoreImpl<T> {
 
 impl<T: StateManager> DomainStore for DomainStoreImpl<T> {
     fn new_int_var(&mut self, min: isize, max: isize) -> Variable {
-        let id = self.state.increment(self.n_vars) as usize - 1;
+        let id = self.state.increment(self.n_vars);
         let n = (max - min + 1) as usize;
         let domain = self.state.manage_sparse_set(n, min);
 
         let variable = Variable(id);
-        if self.domains.len() <= id {
+        if self.domains.len() <= variable.index() {
             // its a fresh variable
             self.domains.push(domain);
             self.events.push(DomainEvent {
@@ -199,8 +229,8 @@ impl<T: StateManager> DomainStore for DomainStoreImpl<T> {
             });
         } else {
             // let us recycle the old data
-            self.domains[id] = domain;
-            self.events[id] = DomainEvent {
+            self.domains[variable.index()] = domain;
+            self.events[variable.index()] = DomainEvent {
                 variable,
                 is_fixed: false,
                 is_empty: false,
@@ -213,23 +243,23 @@ impl<T: StateManager> DomainStore for DomainStoreImpl<T> {
     }
 
     fn min(&self, var: Variable) -> Option<isize> {
-        self.state.sparse_set_get_min(self.domains[var.0])
+        self.state.sparse_set_get_min(self.domains[var.index()])
     }
 
     fn max(&self, var: Variable) -> Option<isize> {
-        self.state.sparse_set_get_max(self.domains[var.0])
+        self.state.sparse_set_get_max(self.domains[var.index()])
     }
 
     fn size(&self, var: Variable) -> usize {
-        self.state.sparse_set_size(self.domains[var.0])
+        self.state.sparse_set_size(self.domains[var.index()])
     }
 
     fn contains(&self, var: Variable, value: isize) -> bool {
-        self.state.sparse_set_contains(self.domains[var.0], value)
+        self.state.sparse_set_contains(self.domains[var.index()], value)
     }
 
     fn fix(&mut self, var: Variable, value: isize) -> CPResult<()> {
-        let dom = self.domains[var.0];
+        let dom = self.domains[var.index()];
 
         if self.contains(var, value) && self.is_fixed(var) {
             // if there is nothing to do, then we're done
@@ -239,16 +269,16 @@ impl<T: StateManager> DomainStore for DomainStoreImpl<T> {
             let max_changed = self.state.sparse_set_get_max(dom) != Some(value);
             self.state.sparse_set_remove_all_but(dom, value);
             if self.state.sparse_set_is_empty(dom) {
-                self.events[var.0].min_changed |= min_changed;
-                self.events[var.0].max_changed |= max_changed;
-                self.events[var.0].domain_changed = true;
-                self.events[var.0].is_empty = true;
+                self.events[var.index()].min_changed |= min_changed;
+                self.events[var.index()].max_changed |= max_changed;
+                self.events[var.index()].domain_changed = true;
+                self.events[var.index()].is_empty = true;
                 CPResult::Err(Inconsistency)
             } else {
-                self.events[var.0].min_changed |= min_changed;
-                self.events[var.0].max_changed |= max_changed;
-                self.events[var.0].domain_changed = true;
-                self.events[var.0].is_fixed = true;
+                self.events[var.index()].min_changed |= min_changed;
+                self.events[var.index()].max_changed |= max_changed;
+                self.events[var.index()].domain_changed = true;
+                self.events[var.index()].is_fixed = true;
                 CPResult::Ok(())
             }
         }
@@ -259,7 +289,7 @@ impl<T: StateManager> DomainStore for DomainStoreImpl<T> {
             // there is nothing to do
             CPResult::Ok(())
         } else {
-            let dom = self.domains[var.0];
+            let dom = self.domains[var.index()];
             let min_changed = self.state.sparse_set_get_min(dom) == Some(value);
             let max_changed = self.state.sparse_set_get_max(dom) == Some(value);
 
@@ -268,11 +298,11 @@ impl<T: StateManager> DomainStore for DomainStoreImpl<T> {
             let is_fixed = size == 1;
             let is_empty = size == 0;
 
-            self.events[var.0].min_changed |= min_changed;
-            self.events[var.0].max_changed |= max_changed;
-            self.events[var.0].is_fixed |= is_fixed;
-            self.events[var.0].is_empty |= is_empty;
-            self.events[var.0].domain_changed |= domain_changed;
+            self.events[var.index()].min_changed |= min_changed;
+            self.events[var.index()].max_changed |= max_changed;
+            self.events[var.index()].is_fixed |= is_fixed;
+            self.events[var.index()].is_empty |= is_empty;
+            self.events[var.index()].domain_changed |= domain_changed;
 
             if is_empty {
                 CPResult::Err(Inconsistency)
@@ -283,7 +313,7 @@ impl<T: StateManager> DomainStore for DomainStoreImpl<T> {
     }
 
     fn remove_below(&mut self, var: Variable, value: isize) -> CPResult<()> {
-        let dom = self.domains[var.0];
+        let dom = self.domains[var.index()];
         let min_changed = self.state.sparse_set_get_min(dom) < Some(value);
 
         if min_changed {
@@ -292,18 +322,18 @@ impl<T: StateManager> DomainStore for DomainStoreImpl<T> {
 
             match size {
                 0 => {
-                    self.events[var.0].is_empty = true;
+                    self.events[var.index()].is_empty = true;
                     CPResult::Err(Inconsistency)
                 }
                 1 => {
-                    self.events[var.0].is_fixed = true;
-                    self.events[var.0].min_changed = true;
-                    self.events[var.0].domain_changed = true;
+                    self.events[var.index()].is_fixed = true;
+                    self.events[var.index()].min_changed = true;
+                    self.events[var.index()].domain_changed = true;
                     CPResult::Ok(())
                 }
                 _ => {
-                    self.events[var.0].min_changed = true;
-                    self.events[var.0].domain_changed = true;
+                    self.events[var.index()].min_changed = true;
+                    self.events[var.index()].domain_changed = true;
                     CPResult::Ok(())
                 }
             }
@@ -314,7 +344,7 @@ impl<T: StateManager> DomainStore for DomainStoreImpl<T> {
     }
 
     fn remove_above(&mut self, var: Variable, value: isize) -> CPResult<()> {
-        let dom = self.domains[var.0];
+        let dom = self.domains[var.index()];
         let max_changed = self.state.sparse_set_get_max(dom) > Some(value);
 
         if max_changed {
@@ -323,18 +353,18 @@ impl<T: StateManager> DomainStore for DomainStoreImpl<T> {
 
             match size {
                 0 => {
-                    self.events[var.0].is_empty = true;
+                    self.events[var.index()].is_empty = true;
                     CPResult::Err(Inconsistency)
                 }
                 1 => {
-                    self.events[var.0].is_fixed = true;
-                    self.events[var.0].max_changed = true;
-                    self.events[var.0].domain_changed = true;
+                    self.events[var.index()].is_fixed = true;
+                    self.events[var.index()].max_changed = true;
+                    self.events[var.index()].domain_changed = true;
                     CPResult::Ok(())
                 }
                 _ => {
-                    self.events[var.0].max_changed = true;
-                    self.events[var.0].domain_changed = true;
+                    self.events[var.index()].max_changed = true;
+                    self.events[var.index()].domain_changed = true;
                     CPResult::Ok(())
                 }
             }
@@ -771,7 +801,7 @@ mod test_domainstoreimpl_domainstore {
         assert_eq!(Ok(()), ds.fix(z, 0));
 
         assert_eq!(
-            ds.events[x.0],
+            ds.events[x.index()],
             DomainEvent {
                 variable: x,
                 is_fixed: true,
@@ -782,7 +812,7 @@ mod test_domainstoreimpl_domainstore {
             }
         );
         assert_eq!(
-            ds.events[y.0],
+            ds.events[y.index()],
             DomainEvent {
                 variable: y,
                 is_fixed: true,
@@ -793,7 +823,7 @@ mod test_domainstoreimpl_domainstore {
             }
         );
         assert_eq!(
-            ds.events[z.0],
+            ds.events[z.index()],
             DomainEvent {
                 variable: z,
                 is_fixed: true,
@@ -817,7 +847,7 @@ mod test_domainstoreimpl_domainstore {
         assert_eq!(Ok(()), ds.remove(z, -10));
 
         assert_eq!(
-            ds.events[x.0],
+            ds.events[x.index()],
             DomainEvent {
                 variable: x,
                 is_fixed: false,
@@ -828,7 +858,7 @@ mod test_domainstoreimpl_domainstore {
             }
         );
         assert_eq!(
-            ds.events[y.0],
+            ds.events[y.index()],
             DomainEvent {
                 variable: y,
                 is_fixed: false,
@@ -839,7 +869,7 @@ mod test_domainstoreimpl_domainstore {
             }
         );
         assert_eq!(
-            ds.events[z.0],
+            ds.events[z.index()],
             DomainEvent {
                 variable: z,
                 is_fixed: false,
@@ -871,7 +901,7 @@ mod test_domainstoreimpl_domainstore {
         assert_eq!(Err(Inconsistency), ds.remove(z, 0));
 
         assert_eq!(
-            ds.events[x.0],
+            ds.events[x.index()],
             DomainEvent {
                 variable: x,
                 is_fixed: true,
@@ -882,7 +912,7 @@ mod test_domainstoreimpl_domainstore {
             }
         );
         assert_eq!(
-            ds.events[y.0],
+            ds.events[y.index()],
             DomainEvent {
                 variable: y,
                 is_fixed: true,
@@ -893,7 +923,7 @@ mod test_domainstoreimpl_domainstore {
             }
         );
         assert_eq!(
-            ds.events[z.0],
+            ds.events[z.index()],
             DomainEvent {
                 variable: z,
                 is_fixed: true,
@@ -916,7 +946,7 @@ mod test_domainstoreimpl_domainstore {
         assert_eq!(Ok(()), ds.remove(z, 0));
 
         assert_eq!(
-            ds.events[x.0],
+            ds.events[x.index()],
             DomainEvent {
                 variable: x,
                 is_fixed: false,
@@ -927,7 +957,7 @@ mod test_domainstoreimpl_domainstore {
             }
         );
         assert_eq!(
-            ds.events[y.0],
+            ds.events[y.index()],
             DomainEvent {
                 variable: y,
                 is_fixed: false,
@@ -938,7 +968,7 @@ mod test_domainstoreimpl_domainstore {
             }
         );
         assert_eq!(
-            ds.events[z.0],
+            ds.events[z.index()],
             DomainEvent {
                 variable: z,
                 is_fixed: true,
@@ -970,7 +1000,7 @@ mod test_domainstoreimpl_domainstore {
         assert_eq!(Some(1), ds.max(z));
 
         assert_eq!(
-            ds.events[x.0],
+            ds.events[x.index()],
             DomainEvent {
                 variable: x,
                 is_fixed: false,
@@ -981,7 +1011,7 @@ mod test_domainstoreimpl_domainstore {
             }
         );
         assert_eq!(
-            ds.events[y.0],
+            ds.events[y.index()],
             DomainEvent {
                 variable: y,
                 is_fixed: false,
@@ -992,7 +1022,7 @@ mod test_domainstoreimpl_domainstore {
             }
         );
         assert_eq!(
-            ds.events[z.0],
+            ds.events[z.index()],
             DomainEvent {
                 variable: z,
                 is_fixed: true,
@@ -1024,7 +1054,7 @@ mod test_domainstoreimpl_domainstore {
         assert_eq!(Some(0), ds.max(z));
 
         assert_eq!(
-            ds.events[x.0],
+            ds.events[x.index()],
             DomainEvent {
                 variable: x,
                 is_fixed: false,
@@ -1035,7 +1065,7 @@ mod test_domainstoreimpl_domainstore {
             }
         );
         assert_eq!(
-            ds.events[y.0],
+            ds.events[y.index()],
             DomainEvent {
                 variable: y,
                 is_fixed: false,
@@ -1046,7 +1076,7 @@ mod test_domainstoreimpl_domainstore {
             }
         );
         assert_eq!(
-            ds.events[z.0],
+            ds.events[z.index()],
             DomainEvent {
                 variable: z,
                 is_fixed: true,
@@ -1070,7 +1100,7 @@ mod test_domainstoreimpl_domainstore {
         assert_eq!(Ok(()), ds.remove_above(z, 20));
 
         assert_eq!(
-            ds.events[x.0],
+            ds.events[x.index()],
             DomainEvent {
                 variable: x,
                 is_fixed: false,
@@ -1081,7 +1111,7 @@ mod test_domainstoreimpl_domainstore {
             }
         );
         assert_eq!(
-            ds.events[y.0],
+            ds.events[y.index()],
             DomainEvent {
                 variable: y,
                 is_fixed: false,
@@ -1092,7 +1122,7 @@ mod test_domainstoreimpl_domainstore {
             }
         );
         assert_eq!(
-            ds.events[z.0],
+            ds.events[z.index()],
             DomainEvent {
                 variable: z,
                 is_fixed: false,
@@ -1116,7 +1146,7 @@ mod test_domainstoreimpl_domainstore {
         assert_eq!(Err(Inconsistency), ds.remove_above(z, -10));
 
         assert_eq!(
-            ds.events[x.0],
+            ds.events[x.index()],
             DomainEvent {
                 variable: x,
                 is_fixed: false,
@@ -1127,7 +1157,7 @@ mod test_domainstoreimpl_domainstore {
             }
         );
         assert_eq!(
-            ds.events[y.0],
+            ds.events[y.index()],
             DomainEvent {
                 variable: y,
                 is_fixed: false,
@@ -1138,7 +1168,7 @@ mod test_domainstoreimpl_domainstore {
             }
         );
         assert_eq!(
-            ds.events[z.0],
+            ds.events[z.index()],
             DomainEvent {
                 variable: z,
                 is_fixed: false,
@@ -1170,7 +1200,7 @@ mod test_domainstoreimpl_domainstore {
         assert_eq!(Some(0), ds.max(z));
 
         assert_eq!(
-            ds.events[x.0],
+            ds.events[x.index()],
             DomainEvent {
                 variable: x,
                 is_fixed: false,
@@ -1181,7 +1211,7 @@ mod test_domainstoreimpl_domainstore {
             }
         );
         assert_eq!(
-            ds.events[y.0],
+            ds.events[y.index()],
             DomainEvent {
                 variable: y,
                 is_fixed: false,
@@ -1192,7 +1222,7 @@ mod test_domainstoreimpl_domainstore {
             }
         );
         assert_eq!(
-            ds.events[z.0],
+            ds.events[z.index()],
             DomainEvent {
                 variable: z,
                 is_fixed: true,
@@ -1216,7 +1246,7 @@ mod test_domainstoreimpl_domainstore {
         assert_eq!(Ok(()), ds.remove_below(z, -20));
 
         assert_eq!(
-            ds.events[x.0],
+            ds.events[x.index()],
             DomainEvent {
                 variable: x,
                 is_fixed: false,
@@ -1227,7 +1257,7 @@ mod test_domainstoreimpl_domainstore {
             }
         );
         assert_eq!(
-            ds.events[y.0],
+            ds.events[y.index()],
             DomainEvent {
                 variable: y,
                 is_fixed: false,
@@ -1238,7 +1268,7 @@ mod test_domainstoreimpl_domainstore {
             }
         );
         assert_eq!(
-            ds.events[z.0],
+            ds.events[z.index()],
             DomainEvent {
                 variable: z,
                 is_fixed: false,
@@ -1262,7 +1292,7 @@ mod test_domainstoreimpl_domainstore {
         assert_eq!(Err(Inconsistency), ds.remove_below(z, 20));
 
         assert_eq!(
-            ds.events[x.0],
+            ds.events[x.index()],
             DomainEvent {
                 variable: x,
                 is_fixed: false,
@@ -1273,7 +1303,7 @@ mod test_domainstoreimpl_domainstore {
             }
         );
         assert_eq!(
-            ds.events[y.0],
+            ds.events[y.index()],
             DomainEvent {
                 variable: y,
                 is_fixed: false,
@@ -1284,7 +1314,7 @@ mod test_domainstoreimpl_domainstore {
             }
         );
         assert_eq!(
-            ds.events[z.0],
+            ds.events[z.index()],
             DomainEvent {
                 variable: z,
                 is_fixed: false,
@@ -1316,7 +1346,7 @@ mod test_domainstoreimpl_domainstore {
         assert_eq!(Some(1), ds.max(z));
 
         assert_eq!(
-            ds.events[x.0],
+            ds.events[x.index()],
             DomainEvent {
                 variable: x,
                 is_fixed: false,
@@ -1327,7 +1357,7 @@ mod test_domainstoreimpl_domainstore {
             }
         );
         assert_eq!(
-            ds.events[y.0],
+            ds.events[y.index()],
             DomainEvent {
                 variable: y,
                 is_fixed: false,
@@ -1338,7 +1368,7 @@ mod test_domainstoreimpl_domainstore {
             }
         );
         assert_eq!(
-            ds.events[z.0],
+            ds.events[z.index()],
             DomainEvent {
                 variable: z,
                 is_fixed: true,
