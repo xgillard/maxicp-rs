@@ -17,7 +17,7 @@
 //! constraint objects
 
 mod domain;
-mod solver;
+mod model;
 
 pub use self::domain::*;
-pub use self::solver::*;
+pub use self::model::*;

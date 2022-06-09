@@ -21,7 +21,8 @@ use std::collections::hash_map::Entry;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
-    DomainBroker, DomainStoreImpl, ReversibleInt, StateManager, TrailedStateManager, Variable,
+    DomainBroker, DomainStoreImpl, ReversibleInt, SaveAndRestore, StateManager,
+    TrailedStateManager, Variable,
 };
 
 use super::{CPResult, DomainStore};
@@ -93,20 +94,34 @@ pub trait ConstraintStore {
     fn fixpoint(&mut self) -> CPResult<()>;
 }
 
+/// The basic expectation of a CP model is that it lets us create variables
+/// (hence the DomainStore responsibility), install constraints bearing on
+/// these variables (hence the ConstraintStore responsibility) and that its
+/// state can be efficiently saved and restored to a previous snapshot during
+/// the search for a satisfying -- or optimal -- solution (hence the
+/// SaveAndRestore responsibility). A CP model *must* implement all three of
+/// these responsibilities in order to match common expectations.
+pub trait CpModel: DomainStore + ConstraintStore + SaveAndRestore {}
+
+/// This is the type of the CP model you will likely want to work with. \
+/// Currently, this is the only available implementation of a CP Model, but it
+/// *might* possibly change in the future.
+pub type DefaultCpModel = CpModelImpl<TrailedStateManager>;
+
 /// This is the type of constraint store implementation you will likely want to
 /// use in your solver. Currently, this is the only available implementation of
 /// a CS but it *might* possibly change in the future.
-pub type DefaultConstraintStore = ConstraintStoreImpl<TrailedStateManager>;
+pub type DefaultConstraintStore = DefaultCpModel;
 
 /// This is a simple implementation of a constraint store.
 ///
 /// # Note
 /// Because it would be very inconvenient to always force a client to go through
 /// the domain store of the constraint store, I let this struct be a domain
-/// store and a domain broker as well. The implementation of these traits is
-/// simply delegated to another structure that actually implements some
+/// store with save and restore capabilities. The implementation of these traits
+/// is simply delegated to another structure that actually implements some
 /// business logic for it.
-pub struct ConstraintStoreImpl<T: StateManager> {
+pub struct CpModelImpl<T: StateManager> {
     /// The domain store which is used to manage the problem variables
     domains: DomainStoreImpl<T>,
     /// This establishes a correspondence between a domain condition and all
@@ -134,7 +149,15 @@ pub struct ConstraintStoreImpl<T: StateManager> {
     /// scheduled for propagation
     scheduled: FxHashSet<Constraint>,
 }
-impl<T: StateManager> DomainStore for ConstraintStoreImpl<T> {
+//------------------------------------------------------------------------------
+// Obviously, we want a CpModelImpl to be an implementation of a CpModel
+// even though it adds absolutely no behavior.
+//------------------------------------------------------------------------------
+impl<T: StateManager> CpModel for CpModelImpl<T> {}
+//------------------------------------------------------------------------------
+// Domain store facet
+//------------------------------------------------------------------------------
+impl<T: StateManager> DomainStore for CpModelImpl<T> {
     fn new_int_var(&mut self, min: isize, max: isize) -> Variable {
         self.domains.new_int_var(min, max)
     }
@@ -175,7 +198,10 @@ impl<T: StateManager> DomainStore for ConstraintStoreImpl<T> {
         self.domains.remove_above(var, value)
     }
 }
-impl<T: StateManager> DomainBroker for ConstraintStoreImpl<T> {
+//------------------------------------------------------------------------------
+// Save and Restore management
+//------------------------------------------------------------------------------
+impl<T: StateManager> SaveAndRestore for CpModelImpl<T> {
     fn save_state(&mut self) {
         self.domains.save_state()
     }
@@ -197,16 +223,11 @@ impl<T: StateManager> DomainBroker for ConstraintStoreImpl<T> {
         }
         self.conditions.truncate(cond_sz);
     }
-
-    fn clear_events(&mut self) {
-        self.domains.clear_events()
-    }
-
-    fn for_each_event<F: FnMut(crate::DomainEvent)>(&self, f: F) {
-        self.domains.for_each_event(f)
-    }
 }
-impl<T: StateManager> ConstraintStore for ConstraintStoreImpl<T> {
+//------------------------------------------------------------------------------
+// Constraint store
+//------------------------------------------------------------------------------
+impl<T: StateManager> ConstraintStore for CpModelImpl<T> {
     fn install(&mut self, modeling_construct: &dyn ModelingConstruct) {
         modeling_construct.install(self)
     }
@@ -260,7 +281,7 @@ impl<T: StateManager> ConstraintStore for ConstraintStoreImpl<T> {
     }
 }
 
-impl<T: StateManager> From<T> for ConstraintStoreImpl<T> {
+impl<T: StateManager> From<T> for CpModelImpl<T> {
     fn from(mut sm: T) -> Self {
         let conditions_sz = sm.manage_int(0);
         let propagator_sz = sm.manage_int(0);
@@ -275,7 +296,7 @@ impl<T: StateManager> From<T> for ConstraintStoreImpl<T> {
         }
     }
 }
-impl<T: StateManager + Default> Default for ConstraintStoreImpl<T> {
+impl<T: StateManager + Default> Default for CpModelImpl<T> {
     fn default() -> Self {
         Self::from(T::default())
     }
@@ -283,7 +304,7 @@ impl<T: StateManager + Default> Default for ConstraintStoreImpl<T> {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // ~~~ UTILITY METHODS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-impl<T: StateManager> ConstraintStoreImpl<T> {
+impl<T: StateManager> CpModelImpl<T> {
     /// Creates a new instance of the constraint store
     pub fn new(sm: T) -> Self {
         Self::from(sm)
@@ -357,13 +378,13 @@ impl<T: StateManager> ConstraintStoreImpl<T> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        ConstraintStore, DefaultConstraintStore, DomainBroker, DomainCondition, DomainStore,
-        Inconsistency,
+        ConstraintStore, DefaultCpModel, DomainCondition, DomainStore, Inconsistency,
+        SaveAndRestore,
     };
 
     #[test]
     fn it_works() {
-        let mut solver = DefaultConstraintStore::default();
+        let mut solver = DefaultCpModel::default();
 
         let x = solver.new_int_var(5, 10);
         let y = solver.new_bool_var();

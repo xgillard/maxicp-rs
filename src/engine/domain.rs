@@ -16,7 +16,9 @@
 //! This module provides the definition and implementation of the variables,
 //! DomainStore and DomainBroker
 
-use crate::{ReversibleInt, ReversibleSparseSet, StateManager, TrailedStateManager};
+use crate::{
+    ReversibleInt, ReversibleSparseSet, SaveAndRestore, StateManager, TrailedStateManager,
+};
 
 /// This is the kind of error that gets raised whenever a propagator fails
 #[derive(Debug, Clone, Copy, thiserror::Error, PartialEq, Eq, Hash)]
@@ -117,11 +119,7 @@ pub struct DomainEvent {
 /// tracking all changes occurring in the domain of the variables. A domain
 /// broker is the object which is used by the solver to schedule the propagation
 /// of the various propagators and listeners.
-pub trait DomainBroker {
-    /// saves the current state of all variables
-    fn save_state(&mut self);
-    /// restores the previous state of all variables
-    fn restore_state(&mut self);
+pub trait DomainBroker: SaveAndRestore {
     /// forgets all events that have happened on a variable
     fn clear_events(&mut self);
     /// goes over all the events that have occurred on the variables
@@ -346,7 +344,7 @@ impl<T: StateManager> DomainStore for DomainStoreImpl<T> {
         }
     }
 }
-impl<T: StateManager> DomainBroker for DomainStoreImpl<T> {
+impl<T: StateManager> SaveAndRestore for DomainStoreImpl<T> {
     fn save_state(&mut self) {
         self.state.save_state()
     }
@@ -354,7 +352,8 @@ impl<T: StateManager> DomainBroker for DomainStoreImpl<T> {
     fn restore_state(&mut self) {
         self.state.restore_state()
     }
-
+}
+impl<T: StateManager> DomainBroker for DomainStoreImpl<T> {
     fn clear_events(&mut self) {
         for e in self.events.iter_mut() {
             e.is_empty = false;
