@@ -199,6 +199,22 @@ impl<T: StateManager> DomainStore for CpModelImpl<T> {
     fn remove_above(&mut self, var: Variable, value: isize) -> CPResult<()> {
         self.domains.remove_above(var, value)
     }
+
+    fn mul(&mut self, var: Variable, value: isize) -> Variable {
+        self.domains.mul(var, value)
+    }
+    fn plus(&mut self, var: Variable, value: isize) -> Variable {
+        self.domains.plus(var, value)
+    }
+    fn sub(&mut self, var: Variable, value: isize) -> Variable {
+        self.domains.sub(var, value)
+    }
+    fn neg(&mut self, var: Variable) -> Variable {
+        self.domains.neg(var)
+    }
+    fn not(&mut self, var: Variable) -> Variable {
+        self.domains.not(var)
+    }
 }
 //------------------------------------------------------------------------------
 // Save and Restore management
@@ -247,6 +263,7 @@ impl<T: StateManager> ConstraintStore for CpModelImpl<T> {
     }
 
     fn propagate_on(&mut self, constraint: Constraint, cond: DomainCondition) {
+        let cond = self.canonical_condition(cond);
         let mut must_push = false;
         match self.listeners.entry(cond) {
             Entry::Occupied(mut e) => {
@@ -380,6 +397,26 @@ impl<T: StateManager> CpModelImpl<T> {
     ) {
         if let Some(l) = listeners.get(&condition) {
             sched.extend(l.iter())
+        }
+    }
+
+    /// The propagation mechanism we use depends on the listeners being attached
+    /// to their "source of truth" variable. This method ensures that the said
+    /// condition relates to the source of truth
+    fn canonical_condition(&self, cond: DomainCondition) -> DomainCondition {
+        match cond {
+            DomainCondition::IsFixed(x) => {
+                DomainCondition::IsFixed(self.domains.source_of_truth(x))
+            }
+            DomainCondition::MinimumChanged(x) => {
+                DomainCondition::MinimumChanged(self.domains.source_of_truth(x))
+            }
+            DomainCondition::MaximumChanged(x) => {
+                DomainCondition::MaximumChanged(self.domains.source_of_truth(x))
+            }
+            DomainCondition::DomainChanged(x) => {
+                DomainCondition::DomainChanged(self.domains.source_of_truth(x))
+            }
         }
     }
 }
@@ -1180,11 +1217,9 @@ mod test_default_model_saveandstore {
     fn restore_clears_all_events() {
         let mut model = DefaultCpModel::default();
         let x = model.new_int_var(0, 10);
-        let c = model.post(Box::new(move |dom: &mut dyn DomainStore| {
-            dom.fix(x, 7)
-        }));
+        let c = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.fix(x, 7)));
         model.propagate_on(c, DomainCondition::DomainChanged(x));
-        
+
         model.save_state();
         model.remove(x, 4).ok(); // creates an event that will trigger the scheduling of c
         model.restore_state(); // c should not be scheduled anymore
