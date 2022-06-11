@@ -30,6 +30,26 @@ and maxicp (<https://pschaus.github.io/maxicp/>).
   * [X] Test the solver propagation
   * [X] Implement views
   * [ ] Implement the basic constraints
+    * [ ] Abs value :: x == |y|
+    * [ ] equal :: x == y
+    * [ ] is equal :: b <==> x == v
+    * [ ] LE :: x <= y
+    * [ ] is LE :: b <==> x <= v
+    * [ ] is LE (var) :: b <==> x <= v
+    * [ ] is or (var) :: b <==> (x || y)
+    * [ ] maximum
+    * [ ] sum
+    * [ ] All diff binary
+    * [ ] All diff dc
+    * [ ] All diff fwc
+    * [ ] All diff binary
+    * [ ] circuit
+    * [ ] cumulative
+    * [ ] cumulative decomp
+    * [ ] disjunctive
+    * [ ] element_1d
+    * [ ] element_1d DC
+    * [ ] element_2d
 * [ ] Search
   * [ ] Implement search strategies
 * [ ] Bindings
@@ -47,3 +67,4 @@ and maxicp (<https://pschaus.github.io/maxicp/>).
   * [ ] Implement reversible stack (push only)
 * [ ] Engine
   * [ ] Implement sequence variables
+  * [ ] Implement more constraints (tables)
