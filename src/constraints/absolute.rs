@@ -112,7 +112,7 @@ impl Propagator for Absolute {
 
 #[cfg(test)]
 mod test_absolute {
-    use crate::{Absolute, ConstraintStore, DefaultCpModel, DomainStore, NotEqualConstant};
+    use crate::prelude::*;
 
     #[test]
     fn simple_test_0() {
@@ -181,5 +181,31 @@ mod test_absolute {
         assert!(cp.is_fixed(x));
         assert!(cp.is_fixed(y));
         assert_eq!(Some(7), cp.max(y));
+    }
+
+    #[test]
+    fn simple_test_4() {
+        let mut cp = DefaultCpModel::default();
+        let x = cp.new_int_var(-5, 10);
+        let y = cp.new_int_var(-6,  7);
+
+        cp.install(&Absolute::new(x, y));
+        assert!(cp.fixpoint().is_ok());
+        assert_eq!(Some(7), cp.max(x));
+        assert_eq!(Some(-5), cp.min(x));
+
+        cp.install(&NotEqualConstant::new(y, 0));
+        cp.install(&LessOrEqualConstant::new(x, 4));
+        assert!(cp.fixpoint().is_ok());
+        assert_eq!(Some(5), cp.max(y));
+
+        cp.install(&LessOrEqualConstant::new(x, -2));
+        assert!(cp.fixpoint().is_ok());
+        assert_eq!(Some(2), cp.min(y));
+
+        assert!(cp.remove_below(y, 5).is_ok());
+        assert!(cp.fixpoint().is_ok());
+        assert!(cp.is_fixed(x));
+        assert!(cp.is_fixed(y));
     }
 }
