@@ -40,7 +40,6 @@ impl ModelingConstruct for Absolute {
 
         cp.schedule(at_post);
 
-
         cp.propagate_on(propagate, DomainChanged(self.x));
         cp.propagate_on(propagate, DomainChanged(self.y));
     }
@@ -69,9 +68,11 @@ impl Propagator for Absolute {
             let ymin = cp.min(y).unwrap();
             let ymax = cp.max(y).unwrap();
 
-            if xmin == xmax { // x is fixed
+            if xmin == xmax {
+                // x is fixed
                 cp.fix(y, xmin.abs())?;
-            } else if ymin == ymax { // y is fixed
+            } else if ymin == ymax {
+                // y is fixed
                 if !cp.contains(x, ymin) {
                     cp.fix(x, -ymin)?;
                 } else if !cp.contains(x, -ymin) {
@@ -173,7 +174,7 @@ mod test_absolute {
         let mut cp = DefaultCpModel::default();
         let x = cp.new_int_var(7, 7);
         let y = cp.new_int_var(-1000, 12);
-        
+
         cp.install(&Absolute::new(x, y));
         assert!(cp.fixpoint().is_ok());
 

@@ -17,8 +17,10 @@
 
 mod absolute;
 mod equal;
+mod is_equal;
 mod not_equal;
 
 pub use absolute::*;
 pub use equal::*;
+pub use is_equal::*;
 pub use not_equal::*;

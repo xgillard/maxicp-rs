@@ -34,10 +34,10 @@ and maxicp (<https://pschaus.github.io/maxicp/>).
     * [X] not equal const :: x != v
     * [X] not equal :: x != y
     * [X] equal :: x == y
-    * [ ] is equal :: b <==> x == v
+    * [X] is equal :: b <==> x == v
     * [ ] LE :: x <= y
     * [ ] is LE :: b <==> x <= v
-    * [ ] is LE (var) :: b <==> x <= v
+    * [ ] is LE (var) :: b <==> x <= y
     * [ ] is or (var) :: b <==> (x || y)
     * [ ] maximum
     * [ ] sum

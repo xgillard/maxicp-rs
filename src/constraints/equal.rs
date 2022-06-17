@@ -134,7 +134,6 @@ impl EqualVar {
     }
 }
 
-
 #[cfg(test)]
 mod test_equal_const {
     use crate::prelude::*;
@@ -143,7 +142,7 @@ mod test_equal_const {
     fn it_just_fixes_it() {
         let mut cp = DefaultCpModel::default();
         let x = cp.new_int_var(-7, 7);
-        
+
         cp.install(&EqualConstant::new(x, 2));
         assert!(cp.fixpoint().is_ok());
         assert!(cp.is_fixed(x));
@@ -151,15 +150,14 @@ mod test_equal_const {
     }
 }
 
-
 #[cfg(test)]
 mod test_equal_var {
     use crate::prelude::*;
-    
+
     fn assert_equal_dom(cp: &dyn DomainStore, x: Variable, y: Variable) {
         cp.iter(x)
-        .zip(cp.iter(y))
-        .for_each(|(a, b)| assert_eq!(a, b))
+            .zip(cp.iter(y))
+            .for_each(|(a, b)| assert_eq!(a, b))
     }
 
     #[test]
@@ -167,7 +165,7 @@ mod test_equal_var {
         let mut cp = DefaultCpModel::default();
         let x = cp.new_int_var(10, 10);
         let y = cp.new_int_var(0, 10);
-        
+
         cp.install(&EqualVar::new(x, y));
         assert!(cp.fixpoint().is_ok());
         assert_equal_dom(&cp, x, y);
@@ -175,15 +173,14 @@ mod test_equal_var {
         assert!(cp.is_fixed(y));
         assert_eq!(Some(10), cp.min(x));
         assert_eq!(Some(10), cp.min(y));
-    } 
-
+    }
 
     #[test]
     fn test_y_fixed_at_post() {
         let mut cp = DefaultCpModel::default();
         let x = cp.new_int_var(0, 10);
         let y = cp.new_int_var(10, 10);
-        
+
         cp.install(&EqualVar::new(x, y));
         assert!(cp.fixpoint().is_ok());
         assert_equal_dom(&cp, x, y);
@@ -191,14 +188,14 @@ mod test_equal_var {
         assert!(cp.is_fixed(y));
         assert_eq!(Some(10), cp.min(x));
         assert_eq!(Some(10), cp.min(y));
-    } 
+    }
 
     #[test]
     fn test_1() {
         let mut cp = DefaultCpModel::default();
         let x = cp.new_int_var(0, 10);
         let y = cp.new_int_var(0, 10);
-        
+
         cp.install(&EqualVar::new(x, y));
         assert!(cp.fixpoint().is_ok());
 
@@ -219,24 +216,22 @@ mod test_equal_var {
         assert_equal_dom(&cp, x, y);
     }
 
-
     #[test]
     fn test_2() {
         let mut cp = DefaultCpModel::default();
-        let x = cp.new_int_var(isize::MAX-20, isize::MAX-1);
-        let y = cp.new_int_var(isize::MAX-10, isize::MAX-1);
+        let x = cp.new_int_var(isize::MAX - 20, isize::MAX - 1);
+        let y = cp.new_int_var(isize::MAX - 10, isize::MAX - 1);
 
-
-        cp.install(&NotEqualConstant::new(x,isize::MAX-5));
-        cp.install(&EqualVar::new(x,y));
+        cp.install(&NotEqualConstant::new(x, isize::MAX - 5));
+        cp.install(&EqualVar::new(x, y));
         assert!(cp.fixpoint().is_ok());
         assert_equal_dom(&cp, x, y);
 
-        cp.install(&EqualConstant::new(x,isize::MAX-1));
+        cp.install(&EqualConstant::new(x, isize::MAX - 1));
         assert!(cp.fixpoint().is_ok());
         assert_equal_dom(&cp, x, y);
 
         assert!(cp.is_fixed(x));
-        assert_eq!(Some(isize::MAX-1), cp.min(x));
+        assert_eq!(Some(isize::MAX - 1), cp.min(x));
     }
 }
