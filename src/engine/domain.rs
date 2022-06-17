@@ -48,6 +48,10 @@ pub trait DomainStore {
     fn max(&self, var: Variable) -> Option<isize>;
     /// Returns the size of the domain of this variable
     fn size(&self, var: Variable) -> usize;
+    /// Returns true iff the domain of 'var' is empty
+    fn is_empty(&self, var: Variable) -> bool {
+        self.size(var) == 0
+    }
     /// Returns true iff the domain of the target `var` contains the specified `value`
     fn contains(&self, var: Variable, value: isize) -> bool;
     /// Returns true iff the value of the target variable is fixed/imposed
@@ -104,6 +108,64 @@ pub trait DomainStore {
     fn neg(&mut self, var: Variable) -> Variable;
     /// Returns a (view) variable corresponding to !var (flips the boolean polarity)
     fn not(&mut self, var: Variable) -> Variable;
+
+    /// Returns an iterator over the values in the domain of the given variable.
+    fn iter(&self, var: Variable) -> DomainIter;
+}
+
+/// An iterator that goes over all the values in the domain of a variable.
+///
+/// # Note
+/// This iterator might not be over-performant. I might want to find something
+/// better. Still, this approach has the advantage of being transparent wrt
+/// the view variables.
+pub struct DomainIter<'a> {
+    /// the domainstore which is used to iterate over the values in the domain
+    /// of the variable
+    owner: &'a dyn DomainStore,
+    /// the variable whose domain is being iterated upon
+    variable: Variable,
+    /// the minimum value in the domain of the variable
+    min: isize,
+    /// the maximum value in the domain of the variable
+    max: isize,
+    /// the current position in the iteration
+    curr: isize,
+}
+
+impl Iterator for DomainIter<'_> {
+    type Item = isize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.curr > self.max {
+            None
+        } else {
+            let curr = self.curr;
+            self.curr += 1;
+
+            if self.owner.contains(self.variable, curr) {
+                Some(curr)
+            } else {
+                self.next()
+            }
+        }
+    }
+}
+impl DoubleEndedIterator for DomainIter<'_> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.curr < self.min {
+            None
+        } else {
+            let curr = self.curr;
+            self.curr -= 1;
+
+            if self.owner.contains(self.variable, curr) {
+                Some(curr)
+            } else {
+                self.next_back()
+            }
+        }
+    }
 }
 
 /// An event that tells what happened to the domain of a variable
@@ -403,6 +465,20 @@ impl<T: StateManager> DomainStore for DomainStoreImpl<T> {
         let variable = Variable(id);
         self.variables.push(VariableType::FlipView { x: var });
         variable
+    }
+
+    fn iter(&self, variable: Variable) -> DomainIter {
+        // the default make an empty iter when the domain is empty
+        let min = self.min(variable).unwrap_or(1);
+        let max = self.max(variable).unwrap_or(-1);
+
+        DomainIter {
+            owner: self,
+            variable,
+            min,
+            max,
+            curr: min,
+        }
     }
 }
 impl<T: StateManager> SaveAndRestore for DomainStoreImpl<T> {
@@ -4782,5 +4858,19 @@ mod test_domainstoreimpl_domainstore_sub_view {
         assert!(!ds.is_fixed(x));
         assert!(!ds.is_fixed(y));
         assert!(!ds.is_fixed(z));
+    }
+}
+
+#[cfg(test)]
+mod test_domainiter {
+    use crate::prelude::*;
+
+    #[test]
+    fn test_iter() {
+        let mut ds = DefaultDomainStore::default();
+        let x = ds.new_int_var(-5, 5);
+
+        let dom = ds.iter(x).collect::<Vec<_>>();
+        assert_eq!(vec![-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5], dom);
     }
 }

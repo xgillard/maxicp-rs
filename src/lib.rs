@@ -21,10 +21,9 @@
 //! maxicp <https://pschaus.github.io/maxicp/>.
 //!
 
+pub mod constraints;
 pub mod engine;
 pub mod state;
-pub mod constraints;
 
 mod prelude;
 pub use prelude::*;
-

@@ -15,3 +15,10 @@
 
 //! This module provides the implementation of some useful constraints.
 
+mod absolute;
+mod equal;
+mod not_equal;
+
+pub use absolute::*;
+pub use equal::*;
+pub use not_equal::*;

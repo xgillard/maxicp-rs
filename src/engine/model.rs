@@ -51,14 +51,14 @@ pub struct Constraint(usize);
 /// works on.
 pub trait Propagator {
     /// Actually runs the custom propagation algorithm
-    fn propagate(&mut self, domain_store: &mut dyn DomainStore) -> CPResult<()>;
+    fn propagate(&self, domain_store: &mut dyn DomainStore) -> CPResult<()>;
 }
 
 /// Any closure/function that accepts a mutable ref to the domain store can be
 /// a propagator. (This is mere convenience, not required to get something
 /// useable)
-impl<F: FnMut(&mut dyn DomainStore) -> CPResult<()>> Propagator for F {
-    fn propagate(&mut self, domain_store: &mut dyn DomainStore) -> CPResult<()> {
+impl<F: Fn(&mut dyn DomainStore) -> CPResult<()>> Propagator for F {
+    fn propagate(&self, domain_store: &mut dyn DomainStore) -> CPResult<()> {
         self(domain_store)
     }
 }
@@ -86,6 +86,7 @@ pub trait ConstraintStore {
     /// Installs a given modeling constuct into the constraint store
     fn install(&mut self, modeling_construct: &dyn ModelingConstruct);
     /// Posts the given propagator but does  
+    #[must_use]
     fn post(&mut self, propagator: Box<dyn Propagator>) -> Constraint;
     /// Schedules the execution of a given constraint (propagator)
     fn schedule(&mut self, constraint: Constraint);
@@ -214,6 +215,9 @@ impl<T: StateManager> DomainStore for CpModelImpl<T> {
     }
     fn not(&mut self, var: Variable) -> Variable {
         self.domains.not(var)
+    }
+    fn iter(&self, var: Variable) -> crate::DomainIter {
+        self.domains.iter(var)
     }
 }
 //------------------------------------------------------------------------------
@@ -1269,7 +1273,7 @@ mod test_default_model_constraintstore {
         assert_eq!(0, model.prop_size());
         assert_eq!(0, model.cond_size());
 
-        model.post(Box::new(move |_: &mut dyn DomainStore| Err(Inconsistency)));
+        let _ = model.post(Box::new(move |_: &mut dyn DomainStore| Err(Inconsistency)));
 
         assert_eq!(1, model.prop_size());
         assert_eq!(0, model.cond_size());

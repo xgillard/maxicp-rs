@@ -30,8 +30,10 @@ and maxicp (<https://pschaus.github.io/maxicp/>).
   * [X] Test the solver propagation
   * [X] Implement views
   * [ ] Implement the basic constraints
-    * [ ] Abs value :: x == |y|
-    * [ ] equal :: x == y
+    * [X] Abs value :: x == |y|
+    * [X] not equal const :: x != v
+    * [X] not equal :: x != y
+    * [X] equal :: x == y
     * [ ] is equal :: b <==> x == v
     * [ ] LE :: x <= y
     * [ ] is LE :: b <==> x <= v
