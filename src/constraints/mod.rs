@@ -18,6 +18,7 @@
 mod absolute;
 mod equal;
 mod is_equal;
+mod is_less_or_equal;
 mod not_equal;
 mod less_or_equal;
 mod greater_or_equal;
@@ -25,6 +26,7 @@ mod greater_or_equal;
 pub use absolute::*;
 pub use equal::*;
 pub use is_equal::*;
+pub use is_less_or_equal::*;
 pub use not_equal::*;
 pub use less_or_equal::*;
 pub use greater_or_equal::*;
