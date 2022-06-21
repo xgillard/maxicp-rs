@@ -33,8 +33,8 @@ and maxicp (<https://pschaus.github.io/maxicp/>).
     * [X] Abs value :: x == |y|
     * [X] not equal const :: x != v
     * [X] not equal :: x != y
-    * [ ] is not equal :: b <==> (x != v)
-    * [ ] is not equal (var) :: b <==> (x != v)
+    * [X] is not equal :: b <==> (x != v)
+    * [X] is not equal (var) :: b <==> (x != y)
     * [X] equal :: x == y
     * [X] is equal :: b <==> x == v
     * [X] is equal (var) :: b <==> x == y
