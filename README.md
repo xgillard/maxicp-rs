@@ -47,6 +47,7 @@ and maxicp (<https://pschaus.github.io/maxicp/>).
     * [ ] is GE :: b <==> (x >= v)
     * [ ] is GE (var) :: b <==> (x >= y)
     * [ ] is or (var) :: b <==> (x || y)
+    * [ ] must be true x
     * [ ] maximum
     * [ ] sum
     * [ ] All diff binary
