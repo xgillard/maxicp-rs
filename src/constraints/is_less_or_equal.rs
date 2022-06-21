@@ -22,7 +22,7 @@ use crate::prelude::*;
 pub struct IsLessOrEqualConstant {
     /// A boolean variable whose value represents the inequality
     b: Variable,
-    /// The variable whose equlity is being tested
+    /// The variable whose inequality is being tested
     x: Variable,
     /// The constant
     v: isize,

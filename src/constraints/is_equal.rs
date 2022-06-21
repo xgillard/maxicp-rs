@@ -59,8 +59,66 @@ impl Propagator for IsEqualConstant {
     }
 }
 
+/// This constraint enforce that b <==> (x == y)
+#[derive(Debug, Clone, Copy)]
+pub struct IsEqualVar {
+    /// A boolean variable whose value represents the inequality
+    b: Variable,
+    /// The first variable whose equlity is being tested
+    x: Variable,
+    /// The second variable whose equlity is being tested
+    y: Variable,
+}
+impl IsEqualVar {
+    /// Creates a new instance of the constraint b <==> (x==v)
+    pub fn new(b: Variable, x: Variable, y: Variable) -> Self {
+        Self { b, x, y }
+    }
+}
+impl ModelingConstruct for IsEqualVar {
+    fn install(&self, cp: &mut dyn ConstraintStore) {
+        let me = cp.post(Box::new(*self));
+
+        cp.schedule(me);
+        cp.propagate_on(me, DomainCondition::IsFixed(self.b));
+        cp.propagate_on(me, DomainCondition::IsFixed(self.x));
+        cp.propagate_on(me, DomainCondition::IsFixed(self.y));
+    }
+}
+impl Propagator for IsEqualVar {
+    fn propagate(&self, cp: &mut dyn DomainStore) -> CPResult<()> {
+        let bfixed = cp.is_fixed(self.b);
+        let xfixed = cp.is_fixed(self.x);
+        let yfixed = cp.is_fixed(self.y);
+
+        // calling this propagator when a domain is empty is a bug !
+        let xmin = cp.min(self.x).unwrap();
+        let ymin = cp.min(self.y).unwrap();
+
+        match (bfixed, xfixed, yfixed) {
+            // boolean + x are fixed
+            (true, true, _)  => 
+                if cp.is_true(self.b) {
+                    cp.fix(self.y, xmin) 
+                } else {
+                    cp.remove(self.y, xmin)
+                },
+            // boolean + y are fixed
+            (true, _, true)  => 
+                if cp.is_true(self.b) {
+                    cp.fix(self.x, ymin)
+                } else {
+                    cp.remove(self.x, ymin)
+                },
+            // x + y are fixed
+            (false, true, true)  => cp.fix_bool(self.b, xmin == ymin),
+            (_, _, _) => Ok(())
+        }
+    }
+}
+
 #[cfg(test)]
-mod test_isequal {
+mod test_isequal_constant {
     use crate::prelude::*;
 
     #[test]
@@ -188,5 +246,255 @@ mod test_isequal {
         assert!(cp.is_fixed(b));
         assert!(cp.is_fixed(x));
         assert!(cp.is_true(b));
+    }
+}
+
+
+
+#[cfg(test)]
+mod test_isequal_var {
+    use crate::prelude::*;
+
+    /// b true + x fixed ==> y = x
+    #[test]
+    fn b_true_and_x_fixed_imply_x_eq_y_at_install() {
+        let mut cp = DefaultCpModel::default();
+        let b = cp.new_bool_var();
+        let x = cp.new_int_var(-15, 15);
+        let y = cp.new_int_var(-20, 20);
+
+        cp.fix_bool(b, true).ok();
+        cp.fix(x, 5).ok();
+        cp.install(&IsEqualVar::new(b, x, y));
+        assert!(cp.fixpoint().is_ok());
+        assert!(cp.is_fixed(b));
+        assert!(cp.is_fixed(x));
+        assert!(cp.is_fixed(y));
+        assert_eq!(Some(5), cp.min(y));
+    }
+    #[test]
+    fn b_true_and_x_fixed_imply_x_eq_y_at_propag() {
+        let mut cp = DefaultCpModel::default();
+        let b = cp.new_bool_var();
+        let x = cp.new_int_var(-15, 15);
+        let y = cp.new_int_var(-20, 20);
+
+        cp.install(&IsEqualVar::new(b, x, y));
+        cp.fixpoint().ok();
+
+        cp.save_state();
+        cp.fix_bool(b, true).ok();
+        cp.fix(x, 5).ok();
+        cp.fixpoint().ok();
+
+        assert!(cp.is_fixed(b));
+        assert!(cp.is_fixed(x));
+        assert!(cp.is_fixed(y));
+        assert_eq!(Some(5), cp.min(y));
+    }
+    // b false + x fixed ==> y != x
+    #[test]
+    fn b_false_and_x_fixed_imply_x_ne_y_at_install() {
+        let mut cp = DefaultCpModel::default();
+        let b = cp.new_bool_var();
+        let x = cp.new_int_var(-15, 15);
+        let y = cp.new_int_var(-20, 20);
+
+        cp.fix_bool(b, false).ok();
+        cp.fix(x, 5).ok();
+        cp.fixpoint().ok();
+
+        cp.install(&IsEqualVar::new(b, x, y));
+        cp.fixpoint().ok();
+
+        assert!(cp.is_fixed(b));
+        assert!(cp.is_fixed(x));
+        assert!(!cp.is_fixed(y));
+        assert!(!cp.contains(y, 5));
+    }
+    #[test]
+    fn b_false_and_x_fixed_imply_x_ne_y_at_propag() {
+        let mut cp = DefaultCpModel::default();
+        let b = cp.new_bool_var();
+        let x = cp.new_int_var(-15, 15);
+        let y = cp.new_int_var(-20, 20);
+
+        cp.install(&IsEqualVar::new(b, x, y));
+        cp.fixpoint().ok();
+
+        cp.save_state();
+        cp.fix_bool(b, false).ok();
+        cp.fix(x, 5).ok();
+        cp.fixpoint().ok();
+
+        assert!(cp.is_fixed(b));
+        assert!(cp.is_fixed(x));
+        assert!(!cp.is_fixed(y));
+        assert!(!cp.contains(y, 5));
+    }
+    // b true + y fixed ==> y = x
+    #[test]
+    fn b_true_and_y_fixed_imply_x_eq_y_at_install() {
+        let mut cp = DefaultCpModel::default();
+        let b = cp.new_bool_var();
+        let x = cp.new_int_var(-15, 15);
+        let y = cp.new_int_var(-20, 20);
+
+        cp.save_state();
+        cp.fix_bool(b, true).ok();
+        cp.fix(y, 5).ok();
+        cp.fixpoint().ok();
+
+        cp.install(&IsEqualVar::new(b, x, y));
+        cp.fixpoint().ok();
+
+        assert!(cp.is_fixed(b));
+        assert!(cp.is_fixed(x));
+        assert!(cp.is_fixed(y));
+        assert_eq!(Some(5), cp.min(x));
+    }
+    #[test]
+    fn b_true_and_y_fixed_imply_x_eq_y_at_propag() {
+        let mut cp = DefaultCpModel::default();
+        let b = cp.new_bool_var();
+        let x = cp.new_int_var(-15, 15);
+        let y = cp.new_int_var(-20, 20);
+
+        cp.install(&IsEqualVar::new(b, x, y));
+        cp.fixpoint().ok();
+
+        cp.save_state();
+        cp.fix_bool(b, true).ok();
+        cp.fix(y, 5).ok();
+        cp.fixpoint().ok();
+
+        assert!(cp.is_fixed(b));
+        assert!(cp.is_fixed(x));
+        assert!(cp.is_fixed(y));
+        assert_eq!(Some(5), cp.min(x));
+    }
+    // b false + y fixed ==> y != x
+    #[test]
+    fn b_false_and_y_fixed_imply_x_ne_y_at_install() {
+        let mut cp = DefaultCpModel::default();
+        let b = cp.new_bool_var();
+        let x = cp.new_int_var(-15, 15);
+        let y = cp.new_int_var(-20, 20);
+
+        cp.save_state();
+        cp.fix_bool(b, false).ok();
+        cp.fix(y, 5).ok();
+        cp.fixpoint().ok();
+
+        cp.install(&IsEqualVar::new(b, x, y));
+        cp.fixpoint().ok();
+
+        assert!(cp.is_fixed(b));
+        assert!(!cp.is_fixed(x));
+        assert!(!cp.contains(x, 5));
+        assert!(cp.is_fixed(y));
+    }
+    #[test]
+    fn b_false_and_y_fixed_imply_x_ne_y_at_propag() {
+        let mut cp = DefaultCpModel::default();
+        let b = cp.new_bool_var();
+        let x = cp.new_int_var(-15, 15);
+        let y = cp.new_int_var(-20, 20);
+
+        cp.install(&IsEqualVar::new(b, x, y));
+        cp.fixpoint().ok();
+
+
+        cp.save_state();
+        cp.fix_bool(b, false).ok();
+        cp.fix(y, 5).ok();
+        cp.fixpoint().ok();
+
+        assert!(cp.is_fixed(b));
+        assert!(!cp.is_fixed(x));
+        assert!(!cp.contains(x, 5));
+        assert!(cp.is_fixed(y));
+    }
+    // x == y ==> b true
+    #[test]
+    fn x_eq_y_implies_b_at_install() {
+        let mut cp = DefaultCpModel::default();
+        let b = cp.new_bool_var();
+        let x = cp.new_int_var(-15, 15);
+        let y = cp.new_int_var(-20, 20);
+
+        cp.save_state();
+        cp.fix(x, 5).ok();
+        cp.fix(y, 5).ok();
+        cp.fixpoint().ok();
+        
+        cp.install(&IsEqualVar::new(b, x, y));
+        cp.fixpoint().ok();
+
+        assert!(cp.is_fixed(b));
+        assert!(cp.is_true(b));
+        assert!(cp.is_fixed(x));
+        assert!(cp.is_fixed(y));
+    }
+    #[test]
+    fn x_eq_y_implies_b_at_propag() {
+        let mut cp = DefaultCpModel::default();
+        let b = cp.new_bool_var();
+        let x = cp.new_int_var(-15, 15);
+        let y = cp.new_int_var(-20, 20);
+
+        cp.install(&IsEqualVar::new(b, x, y));
+        cp.fixpoint().ok();
+
+        cp.save_state();
+        cp.fix(x, 5).ok();
+        cp.fix(y, 5).ok();
+        cp.fixpoint().ok();
+
+        assert!(cp.is_fixed(b));
+        assert!(cp.is_true(b));
+        assert!(cp.is_fixed(x));
+        assert!(cp.is_fixed(y));
+    }
+    // x != y ==> b false 
+    #[test]
+    fn x_ne_y_implies_b_at_install() {
+        let mut cp = DefaultCpModel::default();
+        let b = cp.new_bool_var();
+        let x = cp.new_int_var(-15, 15);
+        let y = cp.new_int_var(-20, 20);
+
+        cp.save_state();
+        cp.fix(x, 5).ok();
+        cp.fix(y, 17).ok();
+        cp.fixpoint().ok();
+        
+        cp.install(&IsEqualVar::new(b, x, y));
+        cp.fixpoint().ok();
+
+        assert!(cp.is_fixed(b));
+        assert!(cp.is_false(b));
+        assert!(cp.is_fixed(x));
+        assert!(cp.is_fixed(y));
+    }
+    #[test]
+    fn x_ne_y_implies_b_at_propag() {
+        let mut cp = DefaultCpModel::default();
+        let b = cp.new_bool_var();
+        let x = cp.new_int_var(-15, 15);
+        let y = cp.new_int_var(-20, 20);
+        
+        cp.install(&IsEqualVar::new(b, x, y));
+        cp.fixpoint().ok();
+
+        cp.save_state();
+        cp.fix(x, 5).ok();
+        cp.fix(y, 17).ok();
+        cp.fixpoint().ok();
+
+        assert!(cp.is_fixed(b));
+        assert!(cp.is_false(b));
+        assert!(cp.is_fixed(x));
+        assert!(cp.is_fixed(y));
     }
 }

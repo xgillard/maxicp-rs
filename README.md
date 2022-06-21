@@ -33,17 +33,19 @@ and maxicp (<https://pschaus.github.io/maxicp/>).
     * [X] Abs value :: x == |y|
     * [X] not equal const :: x != v
     * [X] not equal :: x != y
+    * [ ] is not equal :: b <==> (x != v)
+    * [ ] is not equal (var) :: b <==> (x != v)
     * [X] equal :: x == y
     * [X] is equal :: b <==> x == v
+    * [X] is equal (var) :: b <==> x == y
     * [X] LE :: x <= v
     * [X] LE :: x <= y
     * [X] GE :: x >= v
     * [X] GE :: x >= y
     * [X] is LE :: b <==> x <= v
-    * [ ] is equal (var) :: b <==> x == v
     * [ ] is LE (var) :: b <==> x <= y
     * [ ] is GE :: b <==> (x >= v)
-    * [ ] is GE (vqr) :: b <==> (x >= y)
+    * [ ] is GE (var) :: b <==> (x >= y)
     * [ ] is or (var) :: b <==> (x || y)
     * [ ] maximum
     * [ ] sum
