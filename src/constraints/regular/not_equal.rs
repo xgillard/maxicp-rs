@@ -32,13 +32,13 @@ impl NotEqualConstant {
     }
 }
 impl ModelingConstruct for NotEqualConstant {
-    fn install(&self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut dyn CpModel) {
         let constraint = cp.post(Box::new(*self));
         cp.schedule(constraint);
     }
 }
 impl Propagator for NotEqualConstant {
-    fn propagate(&self, cp: &mut dyn CpModel) -> CPResult<()> {
+    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
         cp.remove(self.x, self.v)
     }
 }
@@ -57,7 +57,7 @@ impl NotEqualVar {
     }
 }
 impl ModelingConstruct for NotEqualVar {
-    fn install(&self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut dyn CpModel) {
         let x_fixed = cp.post(Box::new(self.on_x_fixed()));
         let y_fixed = cp.post(Box::new(self.on_y_fixed()));
 
@@ -83,7 +83,7 @@ mod test_notequal_const {
         let mut cp = DefaultCpModel::default();
         let x = cp.new_int_var(0, 10);
 
-        cp.install(&NotEqualConstant::new(x, 6));
+        cp.install(&mut NotEqualConstant::new(x, 6));
         assert!(cp.fixpoint().is_ok());
         assert!(!cp.contains(x, 6));
     }
@@ -99,7 +99,7 @@ mod test_notequal_var {
         let x = cp.new_int_var(0, 10);
         let y = cp.new_int_var(0, 10);
 
-        cp.install(&NotEqualVar::new(x, y));
+        cp.install(&mut NotEqualVar::new(x, y));
         assert!(cp.fixpoint().is_ok());
         assert_eq!(11, cp.size(x));
         assert_eq!(11, cp.size(y));
@@ -115,7 +115,7 @@ mod test_notequal_var {
         let x = cp.new_int_var(0, 10);
         let y = cp.new_int_var(0, 10);
 
-        cp.install(&NotEqualVar::new(x, y));
+        cp.install(&mut NotEqualVar::new(x, y));
         assert!(cp.fixpoint().is_ok());
         assert_eq!(11, cp.size(x));
         assert_eq!(11, cp.size(y));

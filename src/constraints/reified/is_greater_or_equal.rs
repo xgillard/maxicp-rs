@@ -35,7 +35,7 @@ impl IsGreaterOrEqualConstant {
     }
 }
 impl ModelingConstruct for IsGreaterOrEqualConstant {
-    fn install(&self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut dyn CpModel) {
         let me = *self;
         let prop = cp.post(Box::new(me));
 
@@ -46,7 +46,7 @@ impl ModelingConstruct for IsGreaterOrEqualConstant {
     }
 }
 impl Propagator for IsGreaterOrEqualConstant {
-    fn propagate(&self, cp: &mut dyn CpModel) -> CPResult<()> {
+    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
         if cp.is_true(self.b) {
             cp.remove_below(self.x, self.v)?;
         } else if cp.is_false(self.b) {
@@ -82,7 +82,7 @@ impl IsGreaterOrEqualVar {
     }
 }
 impl ModelingConstruct for IsGreaterOrEqualVar {
-    fn install(&self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut dyn CpModel) {
         let me = *self;
         let prop = cp.post(Box::new(me));
 
@@ -95,7 +95,7 @@ impl ModelingConstruct for IsGreaterOrEqualVar {
     }
 }
 impl Propagator for IsGreaterOrEqualVar {
-    fn propagate(&self, cp: &mut dyn CpModel) -> CPResult<()> {
+    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
         let xmin = cp.min(self.x).unwrap();
         let xmax = cp.max(self.x).unwrap();
         let ymin = cp.min(self.y).unwrap();
@@ -132,7 +132,7 @@ mod test_isgreaterorequal_const {
         let v = 3;
 
         assert_eq!(Ok(()), cp.fix_bool(b, true));
-        cp.install(&IsGreaterOrEqualConstant::new(b, x, v));
+        cp.install(&mut IsGreaterOrEqualConstant::new(b, x, v));
         assert_eq!(Ok(()), cp.fixpoint());
         assert_eq!(Some(3), cp.min(x));
     }
@@ -145,7 +145,7 @@ mod test_isgreaterorequal_const {
         let v = 3;
 
         assert_eq!(Ok(()), cp.fix_bool(b, false));
-        cp.install(&IsGreaterOrEqualConstant::new(b, x, v));
+        cp.install(&mut IsGreaterOrEqualConstant::new(b, x, v));
         assert_eq!(Ok(()), cp.fixpoint());
         assert_eq!(Some(2), cp.max(x));
     }
@@ -157,7 +157,7 @@ mod test_isgreaterorequal_const {
         let b = cp.new_bool_var();
         let v = 3;
 
-        cp.install(&IsGreaterOrEqualConstant::new(b, x, v));
+        cp.install(&mut IsGreaterOrEqualConstant::new(b, x, v));
         assert_eq!(Ok(()), cp.fixpoint());
         assert_eq!(Some(-10), cp.min(x));
         assert_eq!(Some(10), cp.max(x));
@@ -171,7 +171,7 @@ mod test_isgreaterorequal_const {
         let b = cp.new_bool_var();
         let v = -20;
 
-        cp.install(&IsGreaterOrEqualConstant::new(b, x, v));
+        cp.install(&mut IsGreaterOrEqualConstant::new(b, x, v));
         assert_eq!(Ok(()), cp.fixpoint());
         assert!(cp.is_true(b));
     }
@@ -183,7 +183,7 @@ mod test_isgreaterorequal_const {
         let b = cp.new_bool_var();
         let v = 20;
 
-        cp.install(&IsGreaterOrEqualConstant::new(b, x, v));
+        cp.install(&mut IsGreaterOrEqualConstant::new(b, x, v));
         assert_eq!(Ok(()), cp.fixpoint());
         assert!(cp.is_false(b));
     }
@@ -195,7 +195,7 @@ mod test_isgreaterorequal_const {
         let b = cp.new_bool_var();
         let v = 0;
 
-        cp.install(&IsGreaterOrEqualConstant::new(b, x, v));
+        cp.install(&mut IsGreaterOrEqualConstant::new(b, x, v));
         assert_eq!(Ok(()), cp.fixpoint());
         assert_eq!(Some(0), cp.min(b));
         assert_eq!(Some(1), cp.max(b));
@@ -209,7 +209,7 @@ mod test_isgreaterorequal_const {
         let b = cp.new_bool_var();
         let v = 0;
 
-        cp.install(&IsGreaterOrEqualConstant::new(b, x, v));
+        cp.install(&mut IsGreaterOrEqualConstant::new(b, x, v));
         assert_eq!(Ok(()), cp.fixpoint());
         assert_eq!(Some(0), cp.min(b));
         assert_eq!(Some(1), cp.max(b));
@@ -231,7 +231,7 @@ mod test_isgreaterorequal_const {
         let b = cp.new_bool_var();
         let v = 0;
 
-        cp.install(&IsGreaterOrEqualConstant::new(b, x, v));
+        cp.install(&mut IsGreaterOrEqualConstant::new(b, x, v));
         assert_eq!(Ok(()), cp.fixpoint());
         assert_eq!(Some(0), cp.min(b));
         assert_eq!(Some(1), cp.max(b));
@@ -253,7 +253,7 @@ mod test_isgreaterorequal_const {
         let b = cp.new_bool_var();
         let v = 0;
 
-        cp.install(&IsGreaterOrEqualConstant::new(b, x, v));
+        cp.install(&mut IsGreaterOrEqualConstant::new(b, x, v));
         assert_eq!(Ok(()), cp.fixpoint());
         assert_eq!(Some(0), cp.min(b));
         assert_eq!(Some(1), cp.max(b));
@@ -275,7 +275,7 @@ mod test_isgreaterorequal_const {
         let b = cp.new_bool_var();
         let v = 0;
 
-        cp.install(&IsGreaterOrEqualConstant::new(b, x, v));
+        cp.install(&mut IsGreaterOrEqualConstant::new(b, x, v));
         assert_eq!(Ok(()), cp.fixpoint());
         assert_eq!(Some(0), cp.min(b));
         assert_eq!(Some(1), cp.max(b));
@@ -304,7 +304,7 @@ mod test_is_ge_var {
         let y = cp.new_int_var(0, 20);
 
         cp.fix_bool(b, true).ok();
-        cp.install(&IsGreaterOrEqualVar::new(b, x, y));
+        cp.install(&mut IsGreaterOrEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         assert_eq!(Some(0), cp.min(x));
@@ -317,7 +317,7 @@ mod test_is_ge_var {
         let x = cp.new_int_var(-10, 10);
         let y = cp.new_int_var(0, 20);
 
-        cp.install(&IsGreaterOrEqualVar::new(b, x, y));
+        cp.install(&mut IsGreaterOrEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         cp.fix_bool(b, true).ok();
@@ -336,7 +336,7 @@ mod test_is_ge_var {
         cp.fix_bool(b, true).ok();
         cp.fixpoint().ok();
 
-        cp.install(&IsGreaterOrEqualVar::new(b, x, y));
+        cp.install(&mut IsGreaterOrEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         assert_eq!(Some(10), cp.max(y));
@@ -349,7 +349,7 @@ mod test_is_ge_var {
         let x = cp.new_int_var(-10, 10);
         let y = cp.new_int_var(-20, 20);
 
-        cp.install(&IsGreaterOrEqualVar::new(b, x, y));
+        cp.install(&mut IsGreaterOrEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         cp.fix_bool(b, true).ok();
@@ -366,7 +366,7 @@ mod test_is_ge_var {
         let x = cp.new_int_var(-10, 10);
         let y = cp.new_int_var(-20, 0);
 
-        cp.install(&IsGreaterOrEqualVar::new(b, x, y));
+        cp.install(&mut IsGreaterOrEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         cp.fix_bool(b, false).ok();
@@ -385,7 +385,7 @@ mod test_is_ge_var {
         cp.fix_bool(b, false).ok();
         cp.fixpoint().ok();
 
-        cp.install(&IsGreaterOrEqualVar::new(b, x, y));
+        cp.install(&mut IsGreaterOrEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         assert_eq!(Some(-1), cp.max(x));
@@ -401,7 +401,7 @@ mod test_is_ge_var {
         cp.fix_bool(b, false).ok();
         cp.fixpoint().ok();
 
-        cp.install(&IsGreaterOrEqualVar::new(b, x, y));
+        cp.install(&mut IsGreaterOrEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         assert_eq!(Some(-9), cp.min(y));
@@ -414,7 +414,7 @@ mod test_is_ge_var {
         let x = cp.new_int_var(-10, 10);
         let y = cp.new_int_var(-20, 20);
 
-        cp.install(&IsGreaterOrEqualVar::new(b, x, y));
+        cp.install(&mut IsGreaterOrEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         cp.fix_bool(b, false).ok();
@@ -435,7 +435,7 @@ mod test_is_ge_var {
         cp.remove_above(y, 9).ok();
         cp.fixpoint().ok();
 
-        cp.install(&IsGreaterOrEqualVar::new(b, x, y));
+        cp.install(&mut IsGreaterOrEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         assert!(cp.is_true(b));
@@ -448,7 +448,7 @@ mod test_is_ge_var {
         let x = cp.new_int_var(-10, 10);
         let y = cp.new_int_var(-20, 20);
 
-        cp.install(&IsGreaterOrEqualVar::new(b, x, y));
+        cp.install(&mut IsGreaterOrEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         cp.remove_below(x, 10).ok();
@@ -469,7 +469,7 @@ mod test_is_ge_var {
         cp.remove_below(y, 1).ok();
         cp.fixpoint().ok();
 
-        cp.install(&IsGreaterOrEqualVar::new(b, x, y));
+        cp.install(&mut IsGreaterOrEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         assert!(cp.is_false(b));
@@ -482,7 +482,7 @@ mod test_is_ge_var {
         let x = cp.new_int_var(-10, 10);
         let y = cp.new_int_var(-20, 20);
 
-        cp.install(&IsGreaterOrEqualVar::new(b, x, y));
+        cp.install(&mut IsGreaterOrEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         cp.remove_above(x, 0).ok();

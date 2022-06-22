@@ -30,13 +30,13 @@ impl EqualConstant {
     }
 }
 impl ModelingConstruct for EqualConstant {
-    fn install(&self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut dyn CpModel) {
         let constraint = cp.post(Box::new(*self));
         cp.schedule(constraint);
     }
 }
 impl Propagator for EqualConstant {
-    fn propagate(&self, cp: &mut dyn CpModel) -> CPResult<()> {
+    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
         cp.fix(self.x, self.v)
     }
 }
@@ -54,7 +54,7 @@ impl EqualVar {
     }
 }
 impl ModelingConstruct for EqualVar {
-    fn install(&self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut dyn CpModel) {
         let at_post = cp.post(Box::new(self.at_post()));
         let x_changed = cp.post(Box::new(self.on_x_domain_change()));
         let y_changed = cp.post(Box::new(self.on_y_domain_change()));
@@ -143,7 +143,7 @@ mod test_equal_const {
         let mut cp = DefaultCpModel::default();
         let x = cp.new_int_var(-7, 7);
 
-        cp.install(&EqualConstant::new(x, 2));
+        cp.install(&mut EqualConstant::new(x, 2));
         assert!(cp.fixpoint().is_ok());
         assert!(cp.is_fixed(x));
         assert_eq!(Some(2), cp.min(x));
@@ -166,7 +166,7 @@ mod test_equal_var {
         let x = cp.new_int_var(10, 10);
         let y = cp.new_int_var(0, 10);
 
-        cp.install(&EqualVar::new(x, y));
+        cp.install(&mut EqualVar::new(x, y));
         assert!(cp.fixpoint().is_ok());
         assert_equal_dom(&cp, x, y);
         assert!(cp.is_fixed(x));
@@ -181,7 +181,7 @@ mod test_equal_var {
         let x = cp.new_int_var(0, 10);
         let y = cp.new_int_var(10, 10);
 
-        cp.install(&EqualVar::new(x, y));
+        cp.install(&mut EqualVar::new(x, y));
         assert!(cp.fixpoint().is_ok());
         assert_equal_dom(&cp, x, y);
         assert!(cp.is_fixed(x));
@@ -196,7 +196,7 @@ mod test_equal_var {
         let x = cp.new_int_var(0, 10);
         let y = cp.new_int_var(0, 10);
 
-        cp.install(&EqualVar::new(x, y));
+        cp.install(&mut EqualVar::new(x, y));
         assert!(cp.fixpoint().is_ok());
 
         assert!(cp.remove_above(x, 7).is_ok());
@@ -222,12 +222,12 @@ mod test_equal_var {
         let x = cp.new_int_var(isize::MAX - 20, isize::MAX - 1);
         let y = cp.new_int_var(isize::MAX - 10, isize::MAX - 1);
 
-        cp.install(&NotEqualConstant::new(x, isize::MAX - 5));
-        cp.install(&EqualVar::new(x, y));
+        cp.install(&mut NotEqualConstant::new(x, isize::MAX - 5));
+        cp.install(&mut EqualVar::new(x, y));
         assert!(cp.fixpoint().is_ok());
         assert_equal_dom(&cp, x, y);
 
-        cp.install(&EqualConstant::new(x, isize::MAX - 1));
+        cp.install(&mut EqualConstant::new(x, isize::MAX - 1));
         assert!(cp.fixpoint().is_ok());
         assert_equal_dom(&cp, x, y);
 

@@ -30,7 +30,7 @@ pub struct IsLessOrEqualConstant {
 }
 
 impl ModelingConstruct for IsLessOrEqualConstant {
-    fn install(&self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut dyn CpModel) {
         let me = *self;
         let install = cp.post(Box::new(move |d: &mut dyn CpModel| me.at_install(d)));
         let b_fixed = cp.post(Box::new(move |d: &mut dyn CpModel| me.upon_fixed_bool(d)));
@@ -111,7 +111,7 @@ impl IsLessOrEqualVar {
     }
 }
 impl ModelingConstruct for IsLessOrEqualVar {
-    fn install(&self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut dyn CpModel) {
         let me = *self;
         let prop = cp.post(Box::new(me));
 
@@ -124,7 +124,7 @@ impl ModelingConstruct for IsLessOrEqualVar {
     }
 }
 impl Propagator for IsLessOrEqualVar {
-    fn propagate(&self, cp: &mut dyn CpModel) -> CPResult<()> {
+    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
         // propagating when a domain is empty is a BUG.
         let xmin = cp.min(self.x).unwrap();
         let xmax = cp.max(self.x).unwrap();
@@ -161,7 +161,7 @@ mod test_is_le_const {
         let v = 3;
 
         assert_eq!(Ok(()), cp.fix_bool(b, true));
-        cp.install(&IsLessOrEqualConstant::new(b, x, v));
+        cp.install(&mut IsLessOrEqualConstant::new(b, x, v));
         assert_eq!(Ok(()), cp.fixpoint());
         assert_eq!(Some(3), cp.max(x));
     }
@@ -174,7 +174,7 @@ mod test_is_le_const {
         let v = 3;
 
         assert_eq!(Ok(()), cp.fix_bool(b, false));
-        cp.install(&IsLessOrEqualConstant::new(b, x, v));
+        cp.install(&mut IsLessOrEqualConstant::new(b, x, v));
         assert_eq!(Ok(()), cp.fixpoint());
         assert_eq!(Some(4), cp.min(x));
     }
@@ -186,7 +186,7 @@ mod test_is_le_const {
         let b = cp.new_bool_var();
         let v = 3;
 
-        cp.install(&IsLessOrEqualConstant::new(b, x, v));
+        cp.install(&mut IsLessOrEqualConstant::new(b, x, v));
         assert_eq!(Ok(()), cp.fixpoint());
         assert_eq!(Some(-10), cp.min(x));
         assert_eq!(Some(10), cp.max(x));
@@ -200,7 +200,7 @@ mod test_is_le_const {
         let b = cp.new_bool_var();
         let v = 20;
 
-        cp.install(&IsLessOrEqualConstant::new(b, x, v));
+        cp.install(&mut IsLessOrEqualConstant::new(b, x, v));
         assert_eq!(Ok(()), cp.fixpoint());
         assert!(cp.is_true(b));
     }
@@ -212,7 +212,7 @@ mod test_is_le_const {
         let b = cp.new_bool_var();
         let v = -20;
 
-        cp.install(&IsLessOrEqualConstant::new(b, x, v));
+        cp.install(&mut IsLessOrEqualConstant::new(b, x, v));
         assert_eq!(Ok(()), cp.fixpoint());
         assert!(cp.is_false(b));
     }
@@ -224,7 +224,7 @@ mod test_is_le_const {
         let b = cp.new_bool_var();
         let v = 0;
 
-        cp.install(&IsLessOrEqualConstant::new(b, x, v));
+        cp.install(&mut IsLessOrEqualConstant::new(b, x, v));
         assert_eq!(Ok(()), cp.fixpoint());
         assert_eq!(Some(0), cp.min(b));
         assert_eq!(Some(1), cp.max(b));
@@ -238,7 +238,7 @@ mod test_is_le_const {
         let b = cp.new_bool_var();
         let v = 0;
 
-        cp.install(&IsLessOrEqualConstant::new(b, x, v));
+        cp.install(&mut IsLessOrEqualConstant::new(b, x, v));
         assert_eq!(Ok(()), cp.fixpoint());
         assert_eq!(Some(0), cp.min(b));
         assert_eq!(Some(1), cp.max(b));
@@ -260,7 +260,7 @@ mod test_is_le_const {
         let b = cp.new_bool_var();
         let v = 0;
 
-        cp.install(&IsLessOrEqualConstant::new(b, x, v));
+        cp.install(&mut IsLessOrEqualConstant::new(b, x, v));
         assert_eq!(Ok(()), cp.fixpoint());
         assert_eq!(Some(0), cp.min(b));
         assert_eq!(Some(1), cp.max(b));
@@ -282,7 +282,7 @@ mod test_is_le_const {
         let b = cp.new_bool_var();
         let v = 0;
 
-        cp.install(&IsLessOrEqualConstant::new(b, x, v));
+        cp.install(&mut IsLessOrEqualConstant::new(b, x, v));
         assert_eq!(Ok(()), cp.fixpoint());
         assert_eq!(Some(0), cp.min(b));
         assert_eq!(Some(1), cp.max(b));
@@ -304,7 +304,7 @@ mod test_is_le_const {
         let b = cp.new_bool_var();
         let v = 0;
 
-        cp.install(&IsLessOrEqualConstant::new(b, x, v));
+        cp.install(&mut IsLessOrEqualConstant::new(b, x, v));
         assert_eq!(Ok(()), cp.fixpoint());
         assert_eq!(Some(0), cp.min(b));
         assert_eq!(Some(1), cp.max(b));
@@ -333,7 +333,7 @@ mod test_is_le_var {
         let y = cp.new_int_var(-20, 20);
 
         cp.fix_bool(b, true).ok();
-        cp.install(&IsLessOrEqualVar::new(b, x, y));
+        cp.install(&mut IsLessOrEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         assert_eq!(Some(-10), cp.min(y));
@@ -346,7 +346,7 @@ mod test_is_le_var {
         let x = cp.new_int_var(-10, 10);
         let y = cp.new_int_var(-20, 20);
 
-        cp.install(&IsLessOrEqualVar::new(b, x, y));
+        cp.install(&mut IsLessOrEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         cp.fix_bool(b, true).ok();
@@ -365,7 +365,7 @@ mod test_is_le_var {
         cp.fix_bool(b, true).ok();
         cp.fixpoint().ok();
 
-        cp.install(&IsLessOrEqualVar::new(b, x, y));
+        cp.install(&mut IsLessOrEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         assert_eq!(Some(5), cp.max(x));
@@ -378,7 +378,7 @@ mod test_is_le_var {
         let x = cp.new_int_var(-10, 10);
         let y = cp.new_int_var(-20, 5);
 
-        cp.install(&IsLessOrEqualVar::new(b, x, y));
+        cp.install(&mut IsLessOrEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         cp.fix_bool(b, true).ok();
@@ -395,7 +395,7 @@ mod test_is_le_var {
         let x = cp.new_int_var(-10, 10);
         let y = cp.new_int_var(-20, 5);
 
-        cp.install(&IsLessOrEqualVar::new(b, x, y));
+        cp.install(&mut IsLessOrEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         cp.fix_bool(b, false).ok();
@@ -414,7 +414,7 @@ mod test_is_le_var {
         cp.fix_bool(b, false).ok();
         cp.fixpoint().ok();
 
-        cp.install(&IsLessOrEqualVar::new(b, x, y));
+        cp.install(&mut IsLessOrEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         assert_eq!(Some(6), cp.min(x));
@@ -430,7 +430,7 @@ mod test_is_le_var {
         cp.fix_bool(b, false).ok();
         cp.fixpoint().ok();
 
-        cp.install(&IsLessOrEqualVar::new(b, x, y));
+        cp.install(&mut IsLessOrEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         assert_eq!(Some(-11), cp.max(y));
@@ -443,7 +443,7 @@ mod test_is_le_var {
         let x = cp.new_int_var(-10, 10);
         let y = cp.new_int_var(-20, 5);
 
-        cp.install(&IsLessOrEqualVar::new(b, x, y));
+        cp.install(&mut IsLessOrEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         cp.fix_bool(b, false).ok();
@@ -463,7 +463,7 @@ mod test_is_le_var {
         cp.remove_below(y, 10).ok();
         cp.fixpoint().ok();
 
-        cp.install(&IsLessOrEqualVar::new(b, x, y));
+        cp.install(&mut IsLessOrEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         assert!(cp.is_true(b));
@@ -476,7 +476,7 @@ mod test_is_le_var {
         let x = cp.new_int_var(-10, 10);
         let y = cp.new_int_var(-20, 20);
 
-        cp.install(&IsLessOrEqualVar::new(b, x, y));
+        cp.install(&mut IsLessOrEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         cp.remove_below(y, 10).ok();
@@ -495,7 +495,7 @@ mod test_is_le_var {
         cp.remove_above(y, -11).ok();
         cp.fixpoint().ok();
 
-        cp.install(&IsLessOrEqualVar::new(b, x, y));
+        cp.install(&mut IsLessOrEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         assert!(cp.is_false(b));
@@ -508,7 +508,7 @@ mod test_is_le_var {
         let x = cp.new_int_var(-10, 10);
         let y = cp.new_int_var(-20, 20);
 
-        cp.install(&IsLessOrEqualVar::new(b, x, y));
+        cp.install(&mut IsLessOrEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         cp.remove_above(y, -11).ok();

@@ -35,7 +35,7 @@ impl IsNotEqualConstant {
     }
 }
 impl ModelingConstruct for IsNotEqualConstant {
-    fn install(&self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut dyn CpModel) {
         let me = cp.post(Box::new(*self));
 
         cp.schedule(me);
@@ -44,7 +44,7 @@ impl ModelingConstruct for IsNotEqualConstant {
     }
 }
 impl Propagator for IsNotEqualConstant {
-    fn propagate(&self, cp: &mut dyn CpModel) -> CPResult<()> {
+    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
         if cp.is_true(self.b) {
             cp.remove(self.x, self.v)
         } else if cp.is_false(self.b) {
@@ -76,7 +76,7 @@ impl IsNotEqualVar {
     }
 }
 impl ModelingConstruct for IsNotEqualVar {
-    fn install(&self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut dyn CpModel) {
         let me = cp.post(Box::new(*self));
 
         cp.schedule(me);
@@ -86,7 +86,7 @@ impl ModelingConstruct for IsNotEqualVar {
     }
 }
 impl Propagator for IsNotEqualVar {
-    fn propagate(&self, cp: &mut dyn CpModel) -> CPResult<()> {
+    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
         let bfixed = cp.is_fixed(self.b);
         let xfixed = cp.is_fixed(self.x);
         let yfixed = cp.is_fixed(self.y);
@@ -129,7 +129,7 @@ mod test_isnotequal_constant {
         let x = cp.new_int_var(10, 20);
         let v = 15;
 
-        cp.install(&IsNotEqualConstant::new(b, x, v));
+        cp.install(&mut IsNotEqualConstant::new(b, x, v));
         assert!(cp.fixpoint().is_ok());
         assert!(!cp.is_fixed(b));
         assert!(!cp.is_fixed(x));
@@ -147,7 +147,7 @@ mod test_isnotequal_constant {
         let x = cp.new_int_var(10, 20);
         let v = 15;
 
-        cp.install(&IsNotEqualConstant::new(b, x, v));
+        cp.install(&mut IsNotEqualConstant::new(b, x, v));
         assert!(cp.fixpoint().is_ok());
         assert!(cp.is_fixed(b));
         assert!(!cp.is_fixed(x));
@@ -160,7 +160,7 @@ mod test_isnotequal_constant {
         let x = cp.new_int_var(10, 20);
         let v = 15;
 
-        cp.install(&IsNotEqualConstant::new(b, x, v));
+        cp.install(&mut IsNotEqualConstant::new(b, x, v));
         assert!(cp.fixpoint().is_ok());
         assert!(!cp.is_fixed(b));
         assert!(!cp.is_fixed(x));
@@ -178,7 +178,7 @@ mod test_isnotequal_constant {
         let x = cp.new_int_var(10, 20);
         let v = 15;
 
-        cp.install(&IsNotEqualConstant::new(b, x, v));
+        cp.install(&mut IsNotEqualConstant::new(b, x, v));
         assert!(cp.fixpoint().is_ok());
         assert!(cp.is_fixed(b));
         assert!(cp.is_fixed(x));
@@ -192,7 +192,7 @@ mod test_isnotequal_constant {
         let x = cp.new_int_var(10, 20);
         let v = 15;
 
-        cp.install(&IsNotEqualConstant::new(b, x, v));
+        cp.install(&mut IsNotEqualConstant::new(b, x, v));
         assert!(cp.fixpoint().is_ok());
         assert!(!cp.is_fixed(b));
         assert!(!cp.is_fixed(x));
@@ -210,7 +210,7 @@ mod test_isnotequal_constant {
         let x = cp.new_int_var(10, 20);
         let v = 105;
 
-        cp.install(&IsNotEqualConstant::new(b, x, v));
+        cp.install(&mut IsNotEqualConstant::new(b, x, v));
         assert!(cp.fixpoint().is_ok());
         assert!(cp.is_fixed(b));
         assert!(!cp.is_fixed(x));
@@ -224,7 +224,7 @@ mod test_isnotequal_constant {
         let x = cp.new_int_var(10, 20);
         let v = 15;
 
-        cp.install(&IsNotEqualConstant::new(b, x, v));
+        cp.install(&mut IsNotEqualConstant::new(b, x, v));
         assert!(cp.fixpoint().is_ok());
         assert!(!cp.is_fixed(b));
         assert!(!cp.is_fixed(x));
@@ -242,7 +242,7 @@ mod test_isnotequal_constant {
         let x = cp.new_int_var(15, 15);
         let v = 15;
 
-        cp.install(&IsNotEqualConstant::new(b, x, v));
+        cp.install(&mut IsNotEqualConstant::new(b, x, v));
         assert!(cp.fixpoint().is_ok());
         assert!(cp.is_fixed(b));
         assert!(cp.is_fixed(x));
@@ -263,7 +263,7 @@ mod test_isnotqual_var {
 
         cp.fix_bool(b, true).ok();
         cp.fix(x, 5).ok();
-        cp.install(&IsNotEqualVar::new(b, x, y));
+        cp.install(&mut IsNotEqualVar::new(b, x, y));
         assert!(cp.fixpoint().is_ok());
         assert!(cp.is_fixed(b));
         assert!(cp.is_fixed(x));
@@ -277,7 +277,7 @@ mod test_isnotqual_var {
         let x = cp.new_int_var(-15, 15);
         let y = cp.new_int_var(-20, 20);
 
-        cp.install(&IsNotEqualVar::new(b, x, y));
+        cp.install(&mut IsNotEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         cp.save_state();
@@ -301,7 +301,7 @@ mod test_isnotqual_var {
         cp.fix(x, 5).ok();
         cp.fixpoint().ok();
 
-        cp.install(&IsNotEqualVar::new(b, x, y));
+        cp.install(&mut IsNotEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         assert!(cp.is_fixed(b));
@@ -316,7 +316,7 @@ mod test_isnotqual_var {
         let x = cp.new_int_var(-15, 15);
         let y = cp.new_int_var(-20, 20);
 
-        cp.install(&IsNotEqualVar::new(b, x, y));
+        cp.install(&mut IsNotEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         cp.save_state();
@@ -342,7 +342,7 @@ mod test_isnotqual_var {
         cp.fix(y, 5).ok();
         cp.fixpoint().ok();
 
-        cp.install(&IsNotEqualVar::new(b, x, y));
+        cp.install(&mut IsNotEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         assert!(cp.is_fixed(b));
@@ -357,7 +357,7 @@ mod test_isnotqual_var {
         let x = cp.new_int_var(-15, 15);
         let y = cp.new_int_var(-20, 20);
 
-        cp.install(&IsNotEqualVar::new(b, x, y));
+        cp.install(&mut IsNotEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         cp.save_state();
@@ -382,7 +382,7 @@ mod test_isnotqual_var {
         cp.fix(y, 5).ok();
         cp.fixpoint().ok();
 
-        cp.install(&IsNotEqualVar::new(b, x, y));
+        cp.install(&mut IsNotEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         assert!(cp.is_fixed(b));
@@ -397,7 +397,7 @@ mod test_isnotqual_var {
         let x = cp.new_int_var(-15, 15);
         let y = cp.new_int_var(-20, 20);
 
-        cp.install(&IsNotEqualVar::new(b, x, y));
+        cp.install(&mut IsNotEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         cp.save_state();
@@ -422,7 +422,7 @@ mod test_isnotqual_var {
         cp.fix(y, 7).ok();
         cp.fixpoint().ok();
 
-        cp.install(&IsNotEqualVar::new(b, x, y));
+        cp.install(&mut IsNotEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         assert!(cp.is_fixed(b));
@@ -437,7 +437,7 @@ mod test_isnotqual_var {
         let x = cp.new_int_var(-15, 15);
         let y = cp.new_int_var(-20, 20);
 
-        cp.install(&IsNotEqualVar::new(b, x, y));
+        cp.install(&mut IsNotEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         cp.save_state();
@@ -463,7 +463,7 @@ mod test_isnotqual_var {
         cp.fix(y, 5).ok();
         cp.fixpoint().ok();
 
-        cp.install(&IsNotEqualVar::new(b, x, y));
+        cp.install(&mut IsNotEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         assert!(cp.is_fixed(b));
@@ -478,7 +478,7 @@ mod test_isnotqual_var {
         let x = cp.new_int_var(-15, 15);
         let y = cp.new_int_var(-20, 20);
 
-        cp.install(&IsNotEqualVar::new(b, x, y));
+        cp.install(&mut IsNotEqualVar::new(b, x, y));
         cp.fixpoint().ok();
 
         cp.save_state();

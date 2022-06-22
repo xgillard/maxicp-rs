@@ -54,7 +54,7 @@ pub enum DomainCondition {
 /// propagators when the domains of the variables change.
 pub trait ConstraintStore {
     /// Installs a given modeling constuct into the constraint store
-    fn install(&mut self, modeling_construct: &dyn ModelingConstruct);
+    fn install(&mut self, modeling_construct: &mut dyn ModelingConstruct);
     /// Posts the given propagator but does  
     #[must_use]
     fn post(&mut self, propagator: Box<dyn Propagator>) -> Constraint;
@@ -85,7 +85,7 @@ pub trait ModelingConstruct {
     /// This method installs the current modeling construct (which might
     /// consist of several underlying propagators/constraints) into the
     /// constraint store which will schedule its propagators as needed.
-    fn install(&self, cp: &mut dyn CpModel);
+    fn install(&mut self, cp: &mut dyn CpModel);
 }
 
 /// The propagator is the portion of the code where the magic actually happens.
@@ -94,14 +94,14 @@ pub trait ModelingConstruct {
 /// works on.
 pub trait Propagator {
     /// Actually runs the custom propagation algorithm
-    fn propagate(&self, cp: &mut dyn CpModel) -> CPResult<()>;
+    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()>;
 }
 
 /// Any closure/function that accepts a mutable ref to the cp model can be
 /// a propagator. (This is mere convenience, not required to get something
 /// useable)
-impl<F: Fn(&mut dyn CpModel) -> CPResult<()>> Propagator for F {
-    fn propagate(&self, cp: &mut dyn CpModel) -> CPResult<()> {
+impl<F: FnMut(&mut dyn CpModel) -> CPResult<()>> Propagator for F {
+    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
         self(cp)
     }
 }
@@ -266,7 +266,7 @@ impl<T: StateManager> SaveAndRestore for CpModelImpl<T> {
 // Constraint store
 //------------------------------------------------------------------------------
 impl<T: StateManager> ConstraintStore for CpModelImpl<T> {
-    fn install(&mut self, modeling_construct: &dyn ModelingConstruct) {
+    fn install(&mut self, modeling_construct: &mut dyn ModelingConstruct) {
         modeling_construct.install(self)
     }
 
@@ -321,20 +321,21 @@ impl<T: StateManager> ConstraintStore for CpModelImpl<T> {
                 //      before entering the potentially problematic loop.
                 // - propagators => this is not a problem since all what
                 //      propagators can do is to:
-                //          a) add variables to the model (not a problem)
-                //          b) remove values from the domain of variables
-                //          c) add new propagators (no problem either)
-                //          d) schedule the execution of some constraints (not
+                //          a) modify themselves (no impact on other propagators)
+                //          b) add variables to the model (not a problem)
+                //          c) remove values from the domain of variables
+                //          d) add new propagators (no problem either)
+                //          e) schedule the execution of some constraints (not
                 //                a problem, as explained above)
                 // - __propagating ==> which is not accessible outside the model
                 unsafe {
                     let me = self as *mut Self;
-                    self.scheduled
+                    (*me).scheduled
                         .drain()
-                        .for_each(|c| self.__propagating.push(c));
+                        .for_each(|c| (*me).__propagating.push(c));
 
-                    for propagator in self.__propagating.drain(..) {
-                        let propagator = self.propagators[propagator.0].as_ref();
+                    for propagator in (*me).__propagating.drain(..) {
+                        let propagator = (*me).propagators[propagator.0].as_mut();
                         propagator.propagate(&mut (*me))?;
                     }
                 }
@@ -1285,16 +1286,16 @@ mod test_default_model_constraintstore {
         }
     }
     impl ModelingConstruct for MockConstruct {
-        fn install(&self, _cstore: &mut dyn CpModel) {
+        fn install(&mut self, _cstore: &mut dyn CpModel) {
             *self.installed.borrow_mut() = true;
         }
     }
     #[test]
     fn install_simply_delegates_to_model_construct() {
         let mut model = DefaultCpModel::default();
-        let construct = MockConstruct::new();
+        let mut construct = MockConstruct::new();
 
-        model.install(&construct);
+        model.install(&mut construct);
         assert!(*construct.installed.borrow());
     }
     #[test]
@@ -1577,8 +1578,8 @@ mod test_default_model_constraintstore {
     /// Any closure/function that accepts a mutable ref to the cp model can be
     /// a modeling construct. (This is mere convenience, not required to get something
     /// useable)
-    impl<F: Fn(&mut dyn CpModel)> ModelingConstruct for F {
-        fn install(&self, cp: &mut dyn CpModel) {
+    impl<F: FnMut(&mut dyn CpModel)> ModelingConstruct for F {
+        fn install(&mut self, cp: &mut dyn CpModel) {
             self(cp)
         }
     }
@@ -1590,11 +1591,11 @@ mod test_default_model_constraintstore {
         let y = cp.new_int_var(0, 9);
         let z = cp.new_int_var(0, 9);
 
-        cp.install(&move |cp: &mut dyn CpModel| {
+        cp.install(&mut move |cp: &mut dyn CpModel| {
             let c1 = cp.post(Box::new(move |cp: &mut dyn CpModel| {
-                cp.install(&move |cp: &mut dyn CpModel| {
+                cp.install(&mut move |cp: &mut dyn CpModel| {
                     let c2 = cp.post(Box::new(move |cp: &mut dyn CpModel| {
-                        cp.install(&move |cp: &mut dyn CpModel| {
+                        cp.install(&mut move |cp: &mut dyn CpModel| {
                             let c3 = cp.post(Box::new(move |cp: &mut dyn CpModel| cp.fix(z, 3)));
                             cp.schedule(c3);
                         });

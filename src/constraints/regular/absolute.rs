@@ -32,7 +32,7 @@ impl Absolute {
     }
 }
 impl ModelingConstruct for Absolute {
-    fn install(&self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut dyn CpModel) {
         let at_post = cp.post(self.at_post());
         let propagate = cp.post(Box::new(*self));
 
@@ -46,7 +46,7 @@ impl ModelingConstruct for Absolute {
 impl Absolute {
     /// Creates a setup propagator which is only triggered once, when the constraint
     /// is installed
-    fn at_post(self) -> Box<dyn Propagator> {
+    fn at_post(mut self) -> Box<dyn Propagator> {
         let y = self.y;
         Box::new(move |cp: &mut dyn CpModel| {
             cp.remove_below(y, 0)?;
@@ -55,7 +55,7 @@ impl Absolute {
     }
 }
 impl Propagator for Absolute {
-    fn propagate(&self, cp: &mut dyn CpModel) -> CPResult<()> {
+    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
         let x = self.x;
         let y = self.y;
         if cp.is_empty(x) || cp.is_empty(y) {
@@ -118,7 +118,7 @@ mod test_absolute {
         let x = cp.new_int_var(-5, 5);
         let y = cp.new_int_var(-10, 10);
 
-        cp.install(&Absolute::new(x, y));
+        cp.install(&mut Absolute::new(x, y));
         assert!(cp.fixpoint().is_ok());
 
         assert_eq!(Some(0), cp.min(y));
@@ -142,11 +142,11 @@ mod test_absolute {
         let x = cp.new_int_var(-5, 5);
         let y = cp.new_int_var(-10, 10);
 
-        cp.install(&NotEqualConstant::new(x, 0));
-        cp.install(&NotEqualConstant::new(x, 5));
-        cp.install(&NotEqualConstant::new(x, -5));
+        cp.install(&mut NotEqualConstant::new(x, 0));
+        cp.install(&mut NotEqualConstant::new(x, 5));
+        cp.install(&mut NotEqualConstant::new(x, -5));
 
-        cp.install(&Absolute::new(x, y));
+        cp.install(&mut Absolute::new(x, y));
         assert!(cp.fixpoint().is_ok());
 
         assert_eq!(Some(1), cp.min(y));
@@ -159,7 +159,7 @@ mod test_absolute {
         let x = cp.new_int_var(-5, 0);
         let y = cp.new_int_var(4, 4);
 
-        cp.install(&Absolute::new(x, y));
+        cp.install(&mut Absolute::new(x, y));
         assert!(cp.fixpoint().is_ok());
 
         assert!(cp.is_fixed(x));
@@ -173,7 +173,7 @@ mod test_absolute {
         let x = cp.new_int_var(7, 7);
         let y = cp.new_int_var(-1000, 12);
 
-        cp.install(&Absolute::new(x, y));
+        cp.install(&mut Absolute::new(x, y));
         assert!(cp.fixpoint().is_ok());
 
         assert!(cp.is_fixed(x));
@@ -187,17 +187,17 @@ mod test_absolute {
         let x = cp.new_int_var(-5, 10);
         let y = cp.new_int_var(-6, 7);
 
-        cp.install(&Absolute::new(x, y));
+        cp.install(&mut Absolute::new(x, y));
         assert!(cp.fixpoint().is_ok());
         assert_eq!(Some(7), cp.max(x));
         assert_eq!(Some(-5), cp.min(x));
 
-        cp.install(&NotEqualConstant::new(y, 0));
-        cp.install(&LessOrEqualConstant::new(x, 4));
+        cp.install(&mut NotEqualConstant::new(y, 0));
+        cp.install(&mut LessOrEqualConstant::new(x, 4));
         assert!(cp.fixpoint().is_ok());
         assert_eq!(Some(5), cp.max(y));
 
-        cp.install(&LessOrEqualConstant::new(x, -2));
+        cp.install(&mut LessOrEqualConstant::new(x, -2));
         assert!(cp.fixpoint().is_ok());
         assert_eq!(Some(2), cp.min(y));
 

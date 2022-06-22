@@ -30,13 +30,13 @@ impl GreaterOrEqualConstant {
     }
 }
 impl ModelingConstruct for GreaterOrEqualConstant {
-    fn install(&self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut dyn CpModel) {
         let me = cp.post(Box::new(*self));
         cp.schedule(me)
     }
 }
 impl Propagator for GreaterOrEqualConstant {
-    fn propagate(&self, cp: &mut dyn CpModel) -> CPResult<()> {
+    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
         cp.remove_below(self.x, self.v)
     }
 }
@@ -54,7 +54,7 @@ impl GreaterOrEqualVar {
     }
 }
 impl ModelingConstruct for GreaterOrEqualVar {
-    fn install(&self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut dyn CpModel) {
         self.delegate.install(cp)
     }
 }
@@ -69,7 +69,7 @@ mod test_greaterorequal_const {
         let x = cp.new_int_var(10, 20);
         let v = 15;
 
-        cp.install(&GreaterOrEqualConstant::new(x, v));
+        cp.install(&mut GreaterOrEqualConstant::new(x, v));
         assert!(cp.fixpoint().is_ok());
         assert_eq!(Some(15), cp.min(x));
     }
@@ -84,7 +84,7 @@ mod test_greaterorequal_var {
         let x = cp.new_int_var(10, 15);
         let y = cp.new_int_var(10, 20);
 
-        cp.install(&GreaterOrEqualVar::new(x, y));
+        cp.install(&mut GreaterOrEqualVar::new(x, y));
         assert!(cp.fixpoint().is_ok());
         assert_eq!(Some(15), cp.max(y));
     }
@@ -94,7 +94,7 @@ mod test_greaterorequal_var {
         let x = cp.new_int_var(10, 20);
         let y = cp.new_int_var(10, 20);
 
-        cp.install(&GreaterOrEqualVar::new(x, y));
+        cp.install(&mut GreaterOrEqualVar::new(x, y));
         assert!(cp.fixpoint().is_ok());
 
         assert!(cp.remove_above(x, 15).is_ok());
@@ -108,7 +108,7 @@ mod test_greaterorequal_var {
         let x = cp.new_int_var(10, 20);
         let y = cp.new_int_var(12, 15);
 
-        cp.install(&GreaterOrEqualVar::new(x, y));
+        cp.install(&mut GreaterOrEqualVar::new(x, y));
         assert!(cp.fixpoint().is_ok());
         assert_eq!(Some(12), cp.min(x));
     }
@@ -118,7 +118,7 @@ mod test_greaterorequal_var {
         let x = cp.new_int_var(10, 20);
         let y = cp.new_int_var(10, 20);
 
-        cp.install(&GreaterOrEqualVar::new(x, y));
+        cp.install(&mut GreaterOrEqualVar::new(x, y));
         assert!(cp.fixpoint().is_ok());
 
         assert!(cp.remove_below(y, 12).is_ok());

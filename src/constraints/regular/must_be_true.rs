@@ -22,16 +22,27 @@ use crate::prelude::*;
 pub struct MustBeTrue {
     x: Variable,
 }
-/// This constraint enforce that a boolean variable be false.
-#[derive(Debug, Clone, Copy)]
-pub struct MustBeFalse {
-    x: Variable,
-}
 impl MustBeTrue {
     /// creates a new instance of the constraint
     pub fn new(x: Variable) -> Self {
         Self { x }
     }
+}
+impl ModelingConstruct for MustBeTrue {
+    fn install(&mut self, cp: &mut dyn CpModel) {
+        let c = cp.post(Box::new(*self));
+        cp.schedule(c)
+    }
+}
+impl Propagator for MustBeTrue {
+    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
+        cp.fix(self.x, 1)
+    }
+}
+/// This constraint enforce that a boolean variable be false.
+#[derive(Debug, Clone, Copy)]
+pub struct MustBeFalse {
+    x: Variable,
 }
 impl MustBeFalse {
     /// creates a new instance of the constraint
@@ -39,14 +50,15 @@ impl MustBeFalse {
         Self { x }
     }
 }
-impl ModelingConstruct for MustBeTrue {
-    fn install(&self, cp: &mut dyn CpModel) {
-        cp.install(&EqualConstant::new(self.x, 1))
+impl ModelingConstruct for MustBeFalse {
+    fn install(&mut self, cp: &mut dyn CpModel) {
+        let c = cp.post(Box::new(*self));
+        cp.schedule(c)
     }
 }
-impl ModelingConstruct for MustBeFalse {
-    fn install(&self, cp: &mut dyn CpModel) {
-        cp.install(&EqualConstant::new(self.x, 0))
+impl Propagator for MustBeFalse {
+    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
+        cp.fix(self.x, 0)
     }
 }
 
@@ -59,7 +71,7 @@ mod test_mustbe_truefalse {
         let mut cp = DefaultCpModel::default();
 
         let b = cp.new_bool_var();
-        cp.install(&MustBeTrue::new(b));
+        cp.install(&mut MustBeTrue::new(b));
         cp.fixpoint().ok();
 
         assert!(cp.is_true(b))
@@ -70,7 +82,7 @@ mod test_mustbe_truefalse {
         let mut cp = DefaultCpModel::default();
 
         let b = cp.new_bool_var();
-        cp.install(&MustBeFalse::new(b));
+        cp.install(&mut MustBeFalse::new(b));
         cp.fixpoint().ok();
 
         assert!(cp.is_false(b))
@@ -80,8 +92,8 @@ mod test_mustbe_truefalse {
         let mut cp = DefaultCpModel::default();
 
         let b = cp.new_bool_var();
-        cp.install(&MustBeTrue::new(b));
-        cp.install(&MustBeFalse::new(b));
+        cp.install(&mut MustBeTrue::new(b));
+        cp.install(&mut MustBeFalse::new(b));
         assert_eq!(Err(Inconsistency), cp.fixpoint())
     }
 }
