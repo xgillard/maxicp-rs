@@ -15,8 +15,8 @@
 
 //! This module provides the implementation of the different constraint.
 
+use crate::prelude::*;
 use crate::DomainCondition::IsFixed;
-use crate::{CPResult, DomainStore, ModelingConstruct, Propagator, Variable};
 
 /// This constraint enforce that a variable take a different value from the
 /// specified constant. x != v
@@ -32,13 +32,13 @@ impl NotEqualConstant {
     }
 }
 impl ModelingConstruct for NotEqualConstant {
-    fn install(&self, cp: &mut dyn crate::ConstraintStore) {
+    fn install(&self, cp: &mut dyn CpModel) {
         let constraint = cp.post(Box::new(*self));
         cp.schedule(constraint);
     }
 }
 impl Propagator for NotEqualConstant {
-    fn propagate(&self, cp: &mut dyn DomainStore) -> CPResult<()> {
+    fn propagate(&self, cp: &mut dyn CpModel) -> CPResult<()> {
         cp.remove(self.x, self.v)
     }
 }
@@ -57,7 +57,7 @@ impl NotEqualVar {
     }
 }
 impl ModelingConstruct for NotEqualVar {
-    fn install(&self, cp: &mut dyn crate::ConstraintStore) {
+    fn install(&self, cp: &mut dyn CpModel) {
         let x_fixed = cp.post(Box::new(self.on_x_fixed()));
         let y_fixed = cp.post(Box::new(self.on_y_fixed()));
 
@@ -67,10 +67,10 @@ impl ModelingConstruct for NotEqualVar {
 }
 impl NotEqualVar {
     fn on_x_fixed(self) -> impl Propagator {
-        move |dom: &mut dyn DomainStore| dom.remove(self.y, dom.min(self.x).unwrap())
+        move |dom: &mut dyn CpModel| dom.remove(self.y, dom.min(self.x).unwrap())
     }
     fn on_y_fixed(self) -> impl Propagator {
-        move |dom: &mut dyn DomainStore| dom.remove(self.x, dom.min(self.y).unwrap())
+        move |dom: &mut dyn CpModel| dom.remove(self.x, dom.min(self.y).unwrap())
     }
 }
 

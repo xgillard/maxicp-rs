@@ -13,7 +13,7 @@
 // Copyright (c)  2022 by X. Gillard
 //
 
-//! This module provides the implementation of the reified is less-or-equal 
+//! This module provides the implementation of the reified is less-or-equal
 //! constraint.
 
 use crate::prelude::*;
@@ -30,18 +30,12 @@ pub struct IsLessOrEqualConstant {
 }
 
 impl ModelingConstruct for IsLessOrEqualConstant {
-    fn install(&self, cp: &mut dyn ConstraintStore) {
+    fn install(&self, cp: &mut dyn CpModel) {
         let me = *self;
-        let install = cp.post(Box::new(move |d: &mut dyn DomainStore| me.at_install(d)));
-        let b_fixed = cp.post(Box::new(move |d: &mut dyn DomainStore| {
-            me.upon_fixed_bool(d)
-        }));
-        let xmin_up = cp.post(Box::new(move |d: &mut dyn DomainStore| {
-            me.when_xmin_change(d)
-        }));
-        let xmax_dn = cp.post(Box::new(move |d: &mut dyn DomainStore| {
-            me.when_xmax_change(d)
-        }));
+        let install = cp.post(Box::new(move |d: &mut dyn CpModel| me.at_install(d)));
+        let b_fixed = cp.post(Box::new(move |d: &mut dyn CpModel| me.upon_fixed_bool(d)));
+        let xmin_up = cp.post(Box::new(move |d: &mut dyn CpModel| me.when_xmin_change(d)));
+        let xmax_dn = cp.post(Box::new(move |d: &mut dyn CpModel| me.when_xmax_change(d)));
 
         cp.schedule(install);
         cp.propagate_on(b_fixed, DomainCondition::IsFixed(self.b));
@@ -57,7 +51,7 @@ impl IsLessOrEqualConstant {
     }
     /// These are the propagation checks that are performed when the constraint
     /// is being posted onto the cp solver
-    fn at_install(self, cp: &mut dyn DomainStore) -> CPResult<()> {
+    fn at_install(self, cp: &mut dyn CpModel) -> CPResult<()> {
         if cp.is_true(self.b) {
             cp.remove_above(self.x, self.v)
         } else if cp.is_false(self.b) {
@@ -73,7 +67,7 @@ impl IsLessOrEqualConstant {
     /// The propagation is performed whenever the boolean variable is fixed
     /// (its value is guaranteed to either be true or false - not an open {0,1}
     /// domain)
-    fn upon_fixed_bool(self, cp: &mut dyn DomainStore) -> CPResult<()> {
+    fn upon_fixed_bool(self, cp: &mut dyn CpModel) -> CPResult<()> {
         if cp.is_true(self.b) {
             cp.remove_above(self.x, self.v)
         } else {
@@ -82,7 +76,7 @@ impl IsLessOrEqualConstant {
     }
     /// This propagation is performed whenever the lower bound of the domain
     /// of x has changed
-    fn when_xmin_change(self, cp: &mut dyn DomainStore) -> CPResult<()> {
+    fn when_xmin_change(self, cp: &mut dyn CpModel) -> CPResult<()> {
         if cp.min(self.x) > Some(self.v) {
             cp.fix_bool(self.b, false)
         } else {
@@ -91,7 +85,7 @@ impl IsLessOrEqualConstant {
     }
     /// This propagation is performed whenever the upper bound of the domain
     /// of x has changed
-    fn when_xmax_change(self, cp: &mut dyn DomainStore) -> CPResult<()> {
+    fn when_xmax_change(self, cp: &mut dyn CpModel) -> CPResult<()> {
         if cp.max(self.x) <= Some(self.v) {
             cp.fix_bool(self.b, true)
         } else {
@@ -117,7 +111,7 @@ impl IsLessOrEqualVar {
     }
 }
 impl ModelingConstruct for IsLessOrEqualVar {
-    fn install(&self, cp: &mut dyn ConstraintStore) {
+    fn install(&self, cp: &mut dyn CpModel) {
         let me = *self;
         let prop = cp.post(Box::new(me));
 
@@ -130,7 +124,7 @@ impl ModelingConstruct for IsLessOrEqualVar {
     }
 }
 impl Propagator for IsLessOrEqualVar {
-    fn propagate(&self, cp: &mut dyn DomainStore) -> CPResult<()> {
+    fn propagate(&self, cp: &mut dyn CpModel) -> CPResult<()> {
         // propagating when a domain is empty is a BUG.
         let xmin = cp.min(self.x).unwrap();
         let xmax = cp.max(self.x).unwrap();

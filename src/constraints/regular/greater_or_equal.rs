@@ -30,13 +30,13 @@ impl GreaterOrEqualConstant {
     }
 }
 impl ModelingConstruct for GreaterOrEqualConstant {
-    fn install(&self, cp: &mut dyn ConstraintStore) {
+    fn install(&self, cp: &mut dyn CpModel) {
         let me = cp.post(Box::new(*self));
         cp.schedule(me)
     }
 }
 impl Propagator for GreaterOrEqualConstant {
-    fn propagate(&self, cp: &mut dyn DomainStore) -> CPResult<()> {
+    fn propagate(&self, cp: &mut dyn CpModel) -> CPResult<()> {
         cp.remove_below(self.x, self.v)
     }
 }
@@ -54,7 +54,7 @@ impl GreaterOrEqualVar {
     }
 }
 impl ModelingConstruct for GreaterOrEqualVar {
-    fn install(&self, cp: &mut dyn ConstraintStore) {
+    fn install(&self, cp: &mut dyn CpModel) {
         self.delegate.install(cp)
     }
 }

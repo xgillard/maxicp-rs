@@ -27,41 +27,11 @@ use crate::{
 
 use super::{CPResult, DomainStore};
 
-/// This trait stands for the modeling constructs which you'll want to work
-/// with when representing the problem you intend to solve. These modeling
-/// constructs are often referred to as constraints, but this implementation
-/// reserves the constraint type for an atomic constraint associated with
-/// a propagator.
-pub trait ModelingConstruct {
-    /// This method installs the current modeling construct (which might
-    /// consist of several underlying propagators/constraints) into the
-    /// constraint store which will schedule its propagators as needed.
-    fn install(&self, constraint_store: &mut dyn ConstraintStore);
-}
-
 /// An identifier to a constraint. A constraint in itself is really just
 /// an identifier in this implementation. The bulk of the work is done by
 /// the solver.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Constraint(usize);
-
-/// The propagator is the portion of the code where the magic actually happens.
-/// A propagator is called by the solver during the fixpoint computation. It
-/// enforces a certain level of consistency on the domain of the variables it
-/// works on.
-pub trait Propagator {
-    /// Actually runs the custom propagation algorithm
-    fn propagate(&self, domain_store: &mut dyn DomainStore) -> CPResult<()>;
-}
-
-/// Any closure/function that accepts a mutable ref to the domain store can be
-/// a propagator. (This is mere convenience, not required to get something
-/// useable)
-impl<F: Fn(&mut dyn DomainStore) -> CPResult<()>> Propagator for F {
-    fn propagate(&self, domain_store: &mut dyn DomainStore) -> CPResult<()> {
-        self(domain_store)
-    }
-}
 
 /// A condition expressing that a specific change event has occurred on the
 /// domain of some variable
@@ -104,7 +74,37 @@ pub trait ConstraintStore {
 /// the search for a satisfying -- or optimal -- solution (hence the
 /// SaveAndRestore responsibility). A CP model *must* implement all three of
 /// these responsibilities in order to match common expectations.
-pub trait CpModel: DomainStore + ConstraintStore + SaveAndRestore {}
+pub trait CpModel: DomainStore + ConstraintStore {}
+
+/// This trait stands for the modeling constructs which you'll want to work
+/// with when representing the problem you intend to solve. These modeling
+/// constructs are often referred to as constraints, but this implementation
+/// reserves the constraint type for an atomic constraint associated with
+/// a propagator.
+pub trait ModelingConstruct {
+    /// This method installs the current modeling construct (which might
+    /// consist of several underlying propagators/constraints) into the
+    /// constraint store which will schedule its propagators as needed.
+    fn install(&self, cp: &mut dyn CpModel);
+}
+
+/// The propagator is the portion of the code where the magic actually happens.
+/// A propagator is called by the solver during the fixpoint computation. It
+/// enforces a certain level of consistency on the domain of the variables it
+/// works on.
+pub trait Propagator {
+    /// Actually runs the custom propagation algorithm
+    fn propagate(&self, cp: &mut dyn CpModel) -> CPResult<()>;
+}
+
+/// Any closure/function that accepts a mutable ref to the cp model can be
+/// a propagator. (This is mere convenience, not required to get something
+/// useable)
+impl<F: Fn(&mut dyn CpModel) -> CPResult<()>> Propagator for F {
+    fn propagate(&self, cp: &mut dyn CpModel) -> CPResult<()> {
+        self(cp)
+    }
+}
 
 /// This is the type of the CP model you will likely want to work with. \
 /// Currently, this is the only available implementation of a CP Model, but it
@@ -151,6 +151,19 @@ pub struct CpModelImpl<T: StateManager> {
     /// This field is merely used to track the constraints that have been
     /// scheduled for propagation
     scheduled: FxHashSet<Constraint>,
+    /// This field tracks the set of constraints that are being propagated in
+    /// the current iteration of the fixpoint. This vector is required because
+    /// we want to avoid data races in the call to fixpoint. If it were not
+    /// present, it would be possible to modify (install and schedule new
+    /// constraints) the 'scheduled' set while iterating over the scheduled
+    /// events. This would not be okay. I have thus decided to collect all the
+    /// scheduled constraints in this vector before to start processing them.
+    /// Obviously, storing this vector as a member of the 'CpModelImpl' is not
+    /// required as declaring a local vec variable in the fixpoint method would
+    /// perfectly do. However, keeping this vector as an invisible member of the
+    /// model makes it possible to *reuse* this vector and hence avoid numerous
+    /// costly heap allocations.
+    __propagating: Vec<Constraint>,
 }
 //------------------------------------------------------------------------------
 // Obviously, we want a CpModelImpl to be an implementation of a CpModel
@@ -298,13 +311,32 @@ impl<T: StateManager> ConstraintStore for CpModelImpl<T> {
             if must_stop {
                 return CPResult::Ok(());
             } else {
-                let scheduled = &mut self.scheduled;
-                let propagators = &mut self.propagators;
-                let domains = &mut self.domains;
+                // This block is marked unsafe because it requires two mutable
+                // borrows to self. While having a double mutable borrow to
+                // a given variable is a bad idea in general, it is ok to do it
+                // here and to do it in the way it is. Indeed, the only possible
+                // data races concern:
+                // - scheduled ==> no conditions can happen here since all the
+                //      shceduled constraints are flushed to __propagating
+                //      before entering the potentially problematic loop.
+                // - propagators => this is not a problem since all what
+                //      propagators can do is to:
+                //          a) add variables to the model (not a problem)
+                //          b) remove values from the domain of variables
+                //          c) add new propagators (no problem either)
+                //          d) schedule the execution of some constraints (not
+                //                a problem, as explained above)
+                // - __propagating ==> which is not accessible outside the model
+                unsafe {
+                    let me = self as *mut Self;
+                    self.scheduled
+                        .drain()
+                        .for_each(|c| self.__propagating.push(c));
 
-                for propagator in scheduled.drain() {
-                    let propagator = propagators[propagator.0].as_mut();
-                    propagator.propagate(domains)?;
+                    for propagator in self.__propagating.drain(..) {
+                        let propagator = self.propagators[propagator.0].as_ref();
+                        propagator.propagate(&mut (*me))?;
+                    }
                 }
             }
         }
@@ -337,6 +369,7 @@ impl<T: StateManager> CpModelImpl<T> {
             propagator_sz,
             conditions_sz,
             scheduled: Default::default(),
+            __propagating: vec![],
         }
     }
     /// Utility to reach the underlying state manager
@@ -435,7 +468,7 @@ impl<T: StateManager> CpModelImpl<T> {
 #[cfg(test)]
 mod test_default_model_quickcheck {
     use crate::{
-        ConstraintStore, DefaultCpModel, DomainCondition, DomainStore, Inconsistency,
+        ConstraintStore, CpModel, DefaultCpModel, DomainCondition, DomainStore, Inconsistency,
         SaveAndRestore,
     };
 
@@ -446,11 +479,9 @@ mod test_default_model_quickcheck {
         let x = solver.new_int_var(5, 10);
         let y = solver.new_bool_var();
 
-        let cx = solver.post(Box::new(move |dom: &mut dyn DomainStore| {
-            dom.fix_bool(y, true)
-        }));
+        let cx = solver.post(Box::new(move |dom: &mut dyn CpModel| dom.fix_bool(y, true)));
 
-        let cy = solver.post(Box::new(move |dom: &mut dyn DomainStore| {
+        let cy = solver.post(Box::new(move |dom: &mut dyn CpModel| {
             if dom.min(x) >= Some(7) {
                 dom.fix_bool(y, false)?;
                 dom.fix(x, 7)?;
@@ -1052,7 +1083,7 @@ mod test_default_model_saveandstore {
         // removed, and it is fired every time the domain of variable x is
         // changed.
         let rc_flag_x = flag_x.clone();
-        let constraint_x = ds.post(Box::new(move |_: &mut dyn DomainStore| {
+        let constraint_x = ds.post(Box::new(move |_: &mut dyn CpModel| {
             *rc_flag_x.borrow_mut() = true;
             Ok(())
         }));
@@ -1080,7 +1111,7 @@ mod test_default_model_saveandstore {
         // propagator but it should make it stop reacting to changes in the
         // domain of y
         let rc_flag_y = flag_y.clone();
-        let constraint_y = ds.post(Box::new(move |_: &mut dyn DomainStore| {
+        let constraint_y = ds.post(Box::new(move |_: &mut dyn CpModel| {
             *rc_flag_y.borrow_mut() = true;
             Ok(())
         }));
@@ -1109,7 +1140,7 @@ mod test_default_model_saveandstore {
         // constraint z is created and installed at level 2. it must be deleted
         // completely upon restoration
         let rc_flag_z = flag_z.clone();
-        let constraint_z = ds.post(Box::new(move |_: &mut dyn DomainStore| {
+        let constraint_z = ds.post(Box::new(move |_: &mut dyn CpModel| {
             *rc_flag_z.borrow_mut() = true;
             Ok(())
         }));
@@ -1210,7 +1241,7 @@ mod test_default_model_saveandstore {
     #[test]
     fn restore_unschedules_all_scheduled_propagators() {
         let mut model = DefaultCpModel::default();
-        let c = model.post(Box::new(move |_: &mut dyn DomainStore| Err(Inconsistency)));
+        let c = model.post(Box::new(move |_: &mut dyn CpModel| Err(Inconsistency)));
         model.save_state();
         model.schedule(c);
         model.restore_state();
@@ -1221,7 +1252,7 @@ mod test_default_model_saveandstore {
     fn restore_clears_all_events() {
         let mut model = DefaultCpModel::default();
         let x = model.new_int_var(0, 10);
-        let c = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.fix(x, 7)));
+        let c = model.post(Box::new(move |dom: &mut dyn CpModel| dom.fix(x, 7)));
         model.propagate_on(c, DomainCondition::DomainChanged(x));
 
         model.save_state();
@@ -1254,7 +1285,7 @@ mod test_default_model_constraintstore {
         }
     }
     impl ModelingConstruct for MockConstruct {
-        fn install(&self, _cstore: &mut dyn crate::ConstraintStore) {
+        fn install(&self, _cstore: &mut dyn CpModel) {
             *self.installed.borrow_mut() = true;
         }
     }
@@ -1273,7 +1304,7 @@ mod test_default_model_constraintstore {
         assert_eq!(0, model.prop_size());
         assert_eq!(0, model.cond_size());
 
-        let _ = model.post(Box::new(move |_: &mut dyn DomainStore| Err(Inconsistency)));
+        let _ = model.post(Box::new(move |_: &mut dyn CpModel| Err(Inconsistency)));
 
         assert_eq!(1, model.prop_size());
         assert_eq!(0, model.cond_size());
@@ -1286,7 +1317,7 @@ mod test_default_model_constraintstore {
         let mut model = DefaultCpModel::default();
         let x = model.new_int_var(0, 9);
 
-        let c = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.fix(x, 7)));
+        let c = model.post(Box::new(move |dom: &mut dyn CpModel| dom.fix(x, 7)));
 
         // not scheduled yet, fixpoint wont change domain
         assert_eq!(Ok(()), model.fixpoint());
@@ -1306,7 +1337,7 @@ mod test_default_model_constraintstore {
     fn propagate_on_does_not_insert_duplicate() {
         let mut model = DefaultCpModel::default();
         let x = model.new_int_var(0, 9);
-        let c = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.fix(x, 7)));
+        let c = model.post(Box::new(move |dom: &mut dyn CpModel| dom.fix(x, 7)));
 
         model.propagate_on(c, DomainCondition::IsFixed(x));
         assert_eq!(1, model.cond_size());
@@ -1343,8 +1374,8 @@ mod test_default_model_constraintstore {
     fn different_constraints_listening_on_the_same_event_is_not_a_duplicate() {
         let mut model = DefaultCpModel::default();
         let x = model.new_int_var(0, 9);
-        let c = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.fix(x, 7)));
-        let d = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.fix(x, 7)));
+        let c = model.post(Box::new(move |dom: &mut dyn CpModel| dom.fix(x, 7)));
+        let d = model.post(Box::new(move |dom: &mut dyn CpModel| dom.fix(x, 7)));
 
         model.propagate_on(c, DomainCondition::IsFixed(x));
         model.propagate_on(d, DomainCondition::IsFixed(x));
@@ -1355,7 +1386,7 @@ mod test_default_model_constraintstore {
         let mut model = DefaultCpModel::default();
         let x = model.new_int_var(0, 9);
 
-        let c = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.fix(x, 7)));
+        let c = model.post(Box::new(move |dom: &mut dyn CpModel| dom.fix(x, 7)));
         model.propagate_on(c, DomainCondition::IsFixed(x));
 
         // not scheduled yet, fixpoint wont change domain
@@ -1375,7 +1406,7 @@ mod test_default_model_constraintstore {
         let mut model = DefaultCpModel::default();
         let x = model.new_int_var(0, 9);
 
-        let c = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.fix(x, 7)));
+        let c = model.post(Box::new(move |dom: &mut dyn CpModel| dom.fix(x, 7)));
         model.propagate_on(c, DomainCondition::IsFixed(x));
         assert_eq!(Ok(()), model.fix(x, 5));
         assert_eq!(Err(Inconsistency), model.fixpoint());
@@ -1386,7 +1417,7 @@ mod test_default_model_constraintstore {
         let mut model = DefaultCpModel::default();
         let x = model.new_int_var(0, 9);
 
-        let c = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.fix(x, 7)));
+        let c = model.post(Box::new(move |dom: &mut dyn CpModel| dom.fix(x, 7)));
         model.propagate_on(c, DomainCondition::MinimumChanged(x));
 
         // not scheduled yet, fixpoint wont change domain
@@ -1414,7 +1445,7 @@ mod test_default_model_constraintstore {
         let mut model = DefaultCpModel::default();
         let x = model.new_int_var(0, 9);
 
-        let c = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.fix(x, 7)));
+        let c = model.post(Box::new(move |dom: &mut dyn CpModel| dom.fix(x, 7)));
         model.propagate_on(c, DomainCondition::MaximumChanged(x));
 
         // not scheduled yet, fixpoint wont change domain
@@ -1442,7 +1473,7 @@ mod test_default_model_constraintstore {
         let mut model = DefaultCpModel::default();
         let x = model.new_int_var(0, 9);
 
-        let c = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.fix(x, 7)));
+        let c = model.post(Box::new(move |dom: &mut dyn CpModel| dom.fix(x, 7)));
         model.propagate_on(c, DomainCondition::DomainChanged(x));
 
         // not scheduled yet, fixpoint wont change domain
@@ -1466,23 +1497,23 @@ mod test_default_model_constraintstore {
         let y = model.new_int_var(0, 9);
         let z = model.new_int_var(0, 9);
 
-        let boot = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.remove(x, 5)));
+        let boot = model.post(Box::new(move |dom: &mut dyn CpModel| dom.remove(x, 5)));
         model.schedule(boot);
 
-        let cx = model.post(Box::new(move |dom: &mut dyn DomainStore| {
+        let cx = model.post(Box::new(move |dom: &mut dyn CpModel| {
             dom.remove_above(y, 7)
         }));
         model.propagate_on(cx, DomainCondition::DomainChanged(x));
 
-        let cy1 = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.fix(y, 3)));
+        let cy1 = model.post(Box::new(move |dom: &mut dyn CpModel| dom.fix(y, 3)));
         model.propagate_on(cy1, DomainCondition::MaximumChanged(y));
 
-        let cy2 = model.post(Box::new(move |dom: &mut dyn DomainStore| {
+        let cy2 = model.post(Box::new(move |dom: &mut dyn CpModel| {
             dom.remove_below(z, dom.min(y).unwrap())
         }));
         model.propagate_on(cy2, DomainCondition::IsFixed(y));
 
-        let cz = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.fix(z, 3)));
+        let cz = model.post(Box::new(move |dom: &mut dyn CpModel| dom.fix(z, 3)));
         model.propagate_on(cz, DomainCondition::MinimumChanged(z));
 
         assert_eq!(10, model.size(x));
@@ -1509,21 +1540,21 @@ mod test_default_model_constraintstore {
         let y = model.new_int_var(0, 9);
         let z = model.new_int_var(0, 9);
 
-        let boot = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.remove(x, 5)));
+        let boot = model.post(Box::new(move |dom: &mut dyn CpModel| dom.remove(x, 5)));
         model.schedule(boot);
 
-        let cx = model.post(Box::new(move |_: &mut dyn DomainStore| Err(Inconsistency)));
+        let cx = model.post(Box::new(move |_: &mut dyn CpModel| Err(Inconsistency)));
         model.propagate_on(cx, DomainCondition::DomainChanged(x));
 
-        let cy1 = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.fix(y, 3)));
+        let cy1 = model.post(Box::new(move |dom: &mut dyn CpModel| dom.fix(y, 3)));
         model.propagate_on(cy1, DomainCondition::MaximumChanged(y));
 
-        let cy2 = model.post(Box::new(move |dom: &mut dyn DomainStore| {
+        let cy2 = model.post(Box::new(move |dom: &mut dyn CpModel| {
             dom.remove_below(z, dom.min(y).unwrap())
         }));
         model.propagate_on(cy2, DomainCondition::IsFixed(y));
 
-        let cz = model.post(Box::new(move |dom: &mut dyn DomainStore| dom.fix(z, 3)));
+        let cz = model.post(Box::new(move |dom: &mut dyn CpModel| dom.fix(z, 3)));
         model.propagate_on(cz, DomainCondition::MinimumChanged(z));
 
         assert_eq!(10, model.size(x));
@@ -1541,5 +1572,50 @@ mod test_default_model_constraintstore {
         assert_eq!(Some(9), model.max(y));
         assert_eq!(Some(0), model.min(z));
         assert_eq!(Some(9), model.max(z));
+    }
+
+
+    /// Any closure/function that accepts a mutable ref to the cp model can be
+    /// a modeling construct. (This is mere convenience, not required to get something
+    /// useable)
+    impl<F: Fn(&mut dyn CpModel)> ModelingConstruct for F {
+        fn install(&self, cp: &mut dyn CpModel) {
+            self(cp)
+        }
+    }
+
+    #[test]
+    fn propagator_can_post_new_constraints() {
+        let mut cp = DefaultCpModel::default();
+        let x = cp.new_int_var(0, 9);
+        let y = cp.new_int_var(0, 9);
+        let z = cp.new_int_var(0, 9);
+
+        cp.install(&move |cp: &mut dyn CpModel| {
+            let c1 = cp.post(Box::new(move |cp: &mut dyn CpModel| {
+                cp.install(&move |cp: &mut dyn CpModel| {
+                    let c2 = cp.post(Box::new(move |cp: &mut dyn CpModel|{
+                        cp.install(& move |cp: &mut dyn CpModel|{
+                            let c3 = cp.post(Box::new(move |cp: &mut dyn CpModel|{
+                                cp.fix(z, 3)
+                            }));
+                            cp.schedule(c3);
+                        });
+                        cp.fix(y, 4)
+                    }));
+                    cp.schedule(c2);
+                });
+                cp.fix(x, 5)
+            }));
+            cp.schedule(c1);
+        });
+
+        cp.fixpoint().ok();
+        assert!(cp.is_fixed(x));
+        assert!(cp.is_fixed(y));
+        assert!(cp.is_fixed(z));
+        assert_eq!(Some(5), cp.min(x));
+        assert_eq!(Some(4), cp.min(y));
+        assert_eq!(Some(3), cp.min(z));
     }
 }

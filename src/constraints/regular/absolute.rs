@@ -15,9 +15,7 @@
 
 //! This module provides the implementation of the absolute value constraint.
 
-use crate::{
-    CPResult, ConstraintStore, DomainStore, Inconsistency, ModelingConstruct, Propagator, Variable,
-};
+use crate::{CPResult, CpModel, Inconsistency, ModelingConstruct, Propagator, Variable};
 
 use crate::DomainCondition::*;
 
@@ -34,7 +32,7 @@ impl Absolute {
     }
 }
 impl ModelingConstruct for Absolute {
-    fn install(&self, cp: &mut dyn ConstraintStore) {
+    fn install(&self, cp: &mut dyn CpModel) {
         let at_post = cp.post(self.at_post());
         let propagate = cp.post(Box::new(*self));
 
@@ -50,14 +48,14 @@ impl Absolute {
     /// is installed
     fn at_post(self) -> Box<dyn Propagator> {
         let y = self.y;
-        Box::new(move |cp: &mut dyn DomainStore| {
+        Box::new(move |cp: &mut dyn CpModel| {
             cp.remove_below(y, 0)?;
             self.propagate(cp)
         })
     }
 }
 impl Propagator for Absolute {
-    fn propagate(&self, cp: &mut dyn DomainStore) -> CPResult<()> {
+    fn propagate(&self, cp: &mut dyn CpModel) -> CPResult<()> {
         let x = self.x;
         let y = self.y;
         if cp.is_empty(x) || cp.is_empty(y) {

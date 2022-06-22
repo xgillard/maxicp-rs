@@ -35,7 +35,7 @@ impl IsEqualConstant {
     }
 }
 impl ModelingConstruct for IsEqualConstant {
-    fn install(&self, cp: &mut dyn ConstraintStore) {
+    fn install(&self, cp: &mut dyn CpModel) {
         let me = cp.post(Box::new(*self));
 
         cp.schedule(me);
@@ -44,7 +44,7 @@ impl ModelingConstruct for IsEqualConstant {
     }
 }
 impl Propagator for IsEqualConstant {
-    fn propagate(&self, cp: &mut dyn DomainStore) -> CPResult<()> {
+    fn propagate(&self, cp: &mut dyn CpModel) -> CPResult<()> {
         if cp.is_true(self.b) {
             cp.fix(self.x, self.v)
         } else if cp.is_false(self.b) {
@@ -76,7 +76,7 @@ impl IsEqualVar {
     }
 }
 impl ModelingConstruct for IsEqualVar {
-    fn install(&self, cp: &mut dyn ConstraintStore) {
+    fn install(&self, cp: &mut dyn CpModel) {
         let me = cp.post(Box::new(*self));
 
         cp.schedule(me);
@@ -86,7 +86,7 @@ impl ModelingConstruct for IsEqualVar {
     }
 }
 impl Propagator for IsEqualVar {
-    fn propagate(&self, cp: &mut dyn DomainStore) -> CPResult<()> {
+    fn propagate(&self, cp: &mut dyn CpModel) -> CPResult<()> {
         let bfixed = cp.is_fixed(self.b);
         let xfixed = cp.is_fixed(self.x);
         let yfixed = cp.is_fixed(self.y);

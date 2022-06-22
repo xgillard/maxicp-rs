@@ -30,13 +30,13 @@ impl EqualConstant {
     }
 }
 impl ModelingConstruct for EqualConstant {
-    fn install(&self, cp: &mut dyn crate::ConstraintStore) {
+    fn install(&self, cp: &mut dyn CpModel) {
         let constraint = cp.post(Box::new(*self));
         cp.schedule(constraint);
     }
 }
 impl Propagator for EqualConstant {
-    fn propagate(&self, cp: &mut dyn DomainStore) -> CPResult<()> {
+    fn propagate(&self, cp: &mut dyn CpModel) -> CPResult<()> {
         cp.fix(self.x, self.v)
     }
 }
@@ -54,7 +54,7 @@ impl EqualVar {
     }
 }
 impl ModelingConstruct for EqualVar {
-    fn install(&self, cp: &mut dyn crate::ConstraintStore) {
+    fn install(&self, cp: &mut dyn CpModel) {
         let at_post = cp.post(Box::new(self.at_post()));
         let x_changed = cp.post(Box::new(self.on_x_domain_change()));
         let y_changed = cp.post(Box::new(self.on_y_domain_change()));
@@ -66,7 +66,7 @@ impl ModelingConstruct for EqualVar {
 }
 impl EqualVar {
     fn at_post(self) -> impl Propagator {
-        move |cp: &mut dyn DomainStore| {
+        move |cp: &mut dyn CpModel| {
             if cp.is_fixed(self.x) {
                 cp.fix(self.y, cp.min(self.x).unwrap())
             } else if cp.is_fixed(self.y) {
@@ -81,21 +81,21 @@ impl EqualVar {
     }
 
     fn on_x_domain_change(self) -> impl Propagator {
-        move |dom: &mut dyn DomainStore| {
+        move |dom: &mut dyn CpModel| {
             self.bounds_intersect(dom)?;
             Self::prune_equals(self.x, self.y, dom)?;
             Ok(())
         }
     }
     fn on_y_domain_change(self) -> impl Propagator {
-        move |dom: &mut dyn DomainStore| {
+        move |dom: &mut dyn CpModel| {
             self.bounds_intersect(dom)?;
             Self::prune_equals(self.y, self.x, dom)?;
             Ok(())
         }
     }
 
-    fn bounds_intersect(self, cp: &mut dyn DomainStore) -> CPResult<()> {
+    fn bounds_intersect(self, cp: &mut dyn CpModel) -> CPResult<()> {
         if cp.is_empty(self.x) || cp.is_empty(self.y) {
             Err(Inconsistency)
         } else {
@@ -116,7 +116,7 @@ impl EqualVar {
 
     // dom consistent filtering in the direction from -> to
     // every value of to has a support in from
-    fn prune_equals(from: Variable, to: Variable, cp: &mut dyn DomainStore) -> CPResult<()> {
+    fn prune_equals(from: Variable, to: Variable, cp: &mut dyn CpModel) -> CPResult<()> {
         // we could get rid of the allocation at each call, but it would require
         // to either restructure the code, or make 'drop' be a mutable static
         // variable. In that case, the mutation introduces potential dataraces

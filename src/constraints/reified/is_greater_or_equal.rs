@@ -13,7 +13,7 @@
 // Copyright (c)  2022 by X. Gillard
 //
 
-//! This module provides the implementation of the reified is greater or equal 
+//! This module provides the implementation of the reified is greater or equal
 //! constraint.
 
 use crate::prelude::*;
@@ -35,10 +35,10 @@ impl IsGreaterOrEqualConstant {
     }
 }
 impl ModelingConstruct for IsGreaterOrEqualConstant {
-    fn install(&self, cp: &mut dyn ConstraintStore) {
+    fn install(&self, cp: &mut dyn CpModel) {
         let me = *self;
         let prop = cp.post(Box::new(me));
-        
+
         cp.schedule(prop);
         cp.propagate_on(prop, DomainCondition::IsFixed(self.b));
         cp.propagate_on(prop, DomainCondition::MinimumChanged(self.x));
@@ -46,7 +46,7 @@ impl ModelingConstruct for IsGreaterOrEqualConstant {
     }
 }
 impl Propagator for IsGreaterOrEqualConstant {
-    fn propagate(&self, cp: &mut dyn DomainStore) -> CPResult<()> {
+    fn propagate(&self, cp: &mut dyn CpModel) -> CPResult<()> {
         if cp.is_true(self.b) {
             cp.remove_below(self.x, self.v)?;
         } else if cp.is_false(self.b) {
@@ -65,7 +65,6 @@ impl Propagator for IsGreaterOrEqualConstant {
     }
 }
 
-
 /// This constraint enforce that b <==> (x >= v)
 #[derive(Debug, Clone, Copy)]
 pub struct IsGreaterOrEqualVar {
@@ -83,10 +82,10 @@ impl IsGreaterOrEqualVar {
     }
 }
 impl ModelingConstruct for IsGreaterOrEqualVar {
-    fn install(&self, cp: &mut dyn ConstraintStore) {
+    fn install(&self, cp: &mut dyn CpModel) {
         let me = *self;
         let prop = cp.post(Box::new(me));
-        
+
         cp.schedule(prop);
         cp.propagate_on(prop, DomainCondition::IsFixed(self.b));
         cp.propagate_on(prop, DomainCondition::MinimumChanged(self.x));
@@ -96,7 +95,7 @@ impl ModelingConstruct for IsGreaterOrEqualVar {
     }
 }
 impl Propagator for IsGreaterOrEqualVar {
-    fn propagate(&self, cp: &mut dyn DomainStore) -> CPResult<()> {
+    fn propagate(&self, cp: &mut dyn CpModel) -> CPResult<()> {
         let xmin = cp.min(self.x).unwrap();
         let xmax = cp.max(self.x).unwrap();
         let ymin = cp.min(self.y).unwrap();
@@ -114,7 +113,7 @@ impl Propagator for IsGreaterOrEqualVar {
             cp.fix_bool(self.b, true)?;
         } else if xmax < ymin {
             cp.fix_bool(self.b, false)?;
-        } 
+        }
 
         Ok(())
     }
@@ -291,7 +290,6 @@ mod test_isgreaterorequal_const {
         assert_eq!(Some(10), cp.max(x));
     }
 }
-
 
 #[cfg(test)]
 mod test_is_ge_var {
