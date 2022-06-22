@@ -99,6 +99,61 @@ impl IsLessOrEqualConstant {
     }
 }
 
+
+/// This constraint enforce that b <==> (x <= y)
+#[derive(Debug, Clone, Copy)]
+pub struct IsLessOrEqualVar {
+    /// A boolean variable whose value represents the inequality
+    b: Variable,
+    /// The first variable whose inequality is being tested
+    x: Variable,
+    /// The second variable whose inequality is being tested
+    y: Variable,
+}
+impl IsLessOrEqualVar {
+    /// Creates a new instance of the constraint b <==> (x<=v)
+    pub fn new(b: Variable, x: Variable, y: Variable) -> Self {
+        Self { b, x, y }
+    }
+}
+impl ModelingConstruct for IsLessOrEqualVar {
+    fn install(&self, cp: &mut dyn ConstraintStore) {
+        let me = *self;
+        let prop = cp.post(Box::new(me));
+        
+        cp.schedule(prop);
+        cp.propagate_on(prop, DomainCondition::IsFixed(self.b));
+        cp.propagate_on(prop, DomainCondition::MinimumChanged(self.x));
+        cp.propagate_on(prop, DomainCondition::MaximumChanged(self.x));
+        cp.propagate_on(prop, DomainCondition::MinimumChanged(self.y));
+        cp.propagate_on(prop, DomainCondition::MaximumChanged(self.y));
+    }
+}
+impl Propagator for IsLessOrEqualVar {
+    fn propagate(&self, cp: &mut dyn DomainStore) -> CPResult<()> {
+        // propagating when a domain is empty is a BUG.
+        let xmin = cp.min(self.x).unwrap();
+        let xmax = cp.max(self.x).unwrap();
+        let ymin = cp.min(self.y).unwrap();
+        let ymax = cp.max(self.y).unwrap();
+
+        if cp.is_true(self.b) {
+            cp.remove_above(self.x, ymax)?;
+            cp.remove_below(self.y, xmin)?;
+        } else if cp.is_false(self.b) {
+            cp.remove_below(self.x, ymax + 1)?;
+            cp.remove_above(self.y, xmin - 1)?;
+        } 
+        
+        if xmax <= ymin {
+            cp.fix_bool(self.b, true)?;
+        } else if xmin > ymax {
+            cp.fix_bool(self.b, false)?;
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod test_is_le_const {
     use crate::prelude::*;
@@ -268,5 +323,204 @@ mod test_is_le_const {
         assert_eq!(Some(1), cp.max(b));
         assert_eq!(Some(-10), cp.min(x));
         assert_eq!(Some(0), cp.max(x));
+    }
+}
+
+
+#[cfg(test)]
+mod test_is_le_var {
+    use crate::prelude::*;
+
+    // when b is true, xmin forces ymin (at install)
+    #[test]
+    fn when_b_is_true_xmin_forces_ymin_at_install() {
+        let mut cp = DefaultCpModel::default();
+        let b = cp.new_bool_var();
+        let x = cp.new_int_var(-10, 10);
+        let y = cp.new_int_var(-20, 20);
+
+        cp.fix_bool(b, true).ok();
+        cp.install(&IsLessOrEqualVar::new(b, x, y));
+        cp.fixpoint().ok();
+
+        assert_eq!(Some(-10), cp.min(y));
+    }
+    // when b is true, xmin forces ymin (at propag)
+    #[test]
+    fn when_b_is_true_xmin_forces_ymin_at_propag() {
+        let mut cp = DefaultCpModel::default();
+        let b = cp.new_bool_var();
+        let x = cp.new_int_var(-10, 10);
+        let y = cp.new_int_var(-20, 20);
+
+        cp.install(&IsLessOrEqualVar::new(b, x, y));
+        cp.fixpoint().ok();
+
+        cp.fix_bool(b, true).ok();
+        cp.fixpoint().ok();
+
+        assert_eq!(Some(-10), cp.min(y));
+    }
+    // when b is true, ymax forces xmax (at install)
+    #[test]
+    fn when_b_is_true_ymax_forces_xmax_at_install() {
+        let mut cp = DefaultCpModel::default();
+        let b = cp.new_bool_var();
+        let x = cp.new_int_var(-10, 10);
+        let y = cp.new_int_var(-20, 5);
+
+        cp.fix_bool(b, true).ok();
+        cp.fixpoint().ok();
+
+        cp.install(&IsLessOrEqualVar::new(b, x, y));
+        cp.fixpoint().ok();
+
+        assert_eq!(Some(5), cp.max(x));
+    }
+    // when b is true, ymax forces xmax (at propag)
+    #[test]
+    fn when_b_is_true_ymax_forces_xmax_at_propag() {
+        let mut cp = DefaultCpModel::default();
+        let b = cp.new_bool_var();
+        let x = cp.new_int_var(-10, 10);
+        let y = cp.new_int_var(-20, 5);
+
+        cp.install(&IsLessOrEqualVar::new(b, x, y));
+        cp.fixpoint().ok();
+
+        cp.fix_bool(b, true).ok();
+        cp.fixpoint().ok();
+
+        assert_eq!(Some(5), cp.max(x));
+    }
+
+    // when b is false, ymax forces xmin (at install)
+    #[test]
+    fn when_b_is_false_ymax_forces_xmax_at_install() {
+        let mut cp = DefaultCpModel::default();
+        let b = cp.new_bool_var();
+        let x = cp.new_int_var(-10, 10);
+        let y = cp.new_int_var(-20, 5);
+
+        cp.install(&IsLessOrEqualVar::new(b, x, y));
+        cp.fixpoint().ok();
+
+        cp.fix_bool(b, false).ok();
+        cp.fixpoint().ok();
+
+        assert_eq!(Some(6), cp.min(x));
+    }
+    // when b is false, ymin forces xmin (at propag)
+    #[test]
+    fn when_b_is_false_ymax_forces_xmax_at_propag() {
+        let mut cp = DefaultCpModel::default();
+        let b = cp.new_bool_var();
+        let x = cp.new_int_var(-10, 10);
+        let y = cp.new_int_var(-20, 5);
+
+        cp.fix_bool(b, false).ok();
+        cp.fixpoint().ok();
+
+        cp.install(&IsLessOrEqualVar::new(b, x, y));
+        cp.fixpoint().ok();
+
+        assert_eq!(Some(6), cp.min(x));
+    }
+    // when b is false, xmin forces ymax (at install)
+    #[test]
+    fn when_b_is_false_xmin_forces_ymax_at_install() {
+        let mut cp = DefaultCpModel::default();
+        let b = cp.new_bool_var();
+        let x = cp.new_int_var(-10, 10);
+        let y = cp.new_int_var(-20, 5);
+
+        cp.fix_bool(b, false).ok();
+        cp.fixpoint().ok();
+
+        cp.install(&IsLessOrEqualVar::new(b, x, y));
+        cp.fixpoint().ok();
+
+        assert_eq!(Some(-11), cp.max(y));
+    }
+    // when b is false, xmin forces ymax (at propag)
+    #[test]
+    fn when_b_is_false_xmin_forces_ymax_at_propag() {
+        let mut cp = DefaultCpModel::default();
+        let b = cp.new_bool_var();
+        let x = cp.new_int_var(-10, 10);
+        let y = cp.new_int_var(-20, 5);
+
+        cp.install(&IsLessOrEqualVar::new(b, x, y));
+        cp.fixpoint().ok();
+
+        cp.fix_bool(b, false).ok();
+        cp.fixpoint().ok();
+
+        assert_eq!(Some(-11), cp.max(y));
+    }
+
+    // b must be true when and xmax <= ymin (install)
+    #[test]
+    fn b_must_be_true_when_xmax_le_xmin_at_install() {
+        let mut cp = DefaultCpModel::default();
+        let b = cp.new_bool_var();
+        let x = cp.new_int_var(-10, 10);
+        let y = cp.new_int_var(-20, 20);
+
+        cp.remove_below(y, 10).ok();
+        cp.fixpoint().ok();
+
+        cp.install(&IsLessOrEqualVar::new(b, x, y));
+        cp.fixpoint().ok();
+
+        assert!(cp.is_true(b));
+    }
+    // b must be true when and xmax <= ymin (propag)
+    #[test]
+    fn b_must_be_true_when_xmax_le_xmin_at_propag() {
+        let mut cp = DefaultCpModel::default();
+        let b = cp.new_bool_var();
+        let x = cp.new_int_var(-10, 10);
+        let y = cp.new_int_var(-20, 20);
+
+        cp.install(&IsLessOrEqualVar::new(b, x, y));
+        cp.fixpoint().ok();
+
+        cp.remove_below(y, 10).ok();
+        cp.fixpoint().ok();
+
+        assert!(cp.is_true(b));
+    }
+    // b must be false when and xmin > ymax (install)
+    #[test]
+    fn b_must_be_false_when_xmin_gt_ymax_at_install() {
+        let mut cp = DefaultCpModel::default();
+        let b = cp.new_bool_var();
+        let x = cp.new_int_var(-10, 10);
+        let y = cp.new_int_var(-20, 20);
+
+        cp.remove_above(y, -11).ok();
+        cp.fixpoint().ok();
+
+        cp.install(&IsLessOrEqualVar::new(b, x, y));
+        cp.fixpoint().ok();
+
+        assert!(cp.is_false(b));
+    }
+    // b must be false when and xmin > ymax (propag)
+    #[test]
+    fn b_must_be_false_when_xmin_gt_ymax_at_propag() {
+        let mut cp = DefaultCpModel::default();
+        let b = cp.new_bool_var();
+        let x = cp.new_int_var(-10, 10);
+        let y = cp.new_int_var(-20, 20);
+
+        cp.install(&IsLessOrEqualVar::new(b, x, y));
+        cp.fixpoint().ok();
+
+        cp.remove_above(y, -11).ok();
+        cp.fixpoint().ok();
+
+        assert!(cp.is_false(b));
     }
 }
