@@ -17,8 +17,10 @@
 
 mod is_equal;
 mod is_less_or_equal;
+mod is_greater_or_equal;
 mod is_not_equal;
 
 pub use is_equal::*;
 pub use is_less_or_equal::*;
+pub use is_greater_or_equal::*;
 pub use is_not_equal::*;

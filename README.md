@@ -44,8 +44,8 @@ and maxicp (<https://pschaus.github.io/maxicp/>).
     * [X] GE :: x >= y
     * [X] is LE :: b <==> x <= v
     * [X] is LE (var) :: b <==> x <= y
-    * [ ] is GE :: b <==> (x >= v)
-    * [ ] is GE (var) :: b <==> (x >= y)
+    * [X] is GE :: b <==> (x >= v)
+    * [X] is GE (var) :: b <==> (x >= y)
     * [ ] is or (var) :: b <==> (x || y)
     * [ ] must be true x
     * [ ] maximum
