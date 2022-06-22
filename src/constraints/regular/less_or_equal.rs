@@ -46,20 +46,20 @@ impl Propagator for LessOrEqualConstant {
 
 /// This constraint enforce that x <= y
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LessOrEqualVariable {
+pub struct LessOrEqualVar {
     /// the constrained variable
     x: Variable,
     /// the value
     y: Variable,
 }
 
-impl LessOrEqualVariable {
+impl LessOrEqualVar {
     /// Creates a new instance of a constraint x <= v
     pub fn new(x: Variable, y: Variable) -> Self {
         Self { x, y }
     }
 }
-impl ModelingConstruct for LessOrEqualVariable {
+impl ModelingConstruct for LessOrEqualVar {
     fn install(&self, cp: &mut dyn ConstraintStore) {
         let me = cp.post(Box::new(*self));
         cp.schedule(me);
@@ -69,7 +69,7 @@ impl ModelingConstruct for LessOrEqualVariable {
         cp.propagate_on(me, DomainCondition::MaximumChanged(self.y));
     }
 }
-impl Propagator for LessOrEqualVariable {
+impl Propagator for LessOrEqualVar {
     fn propagate(&self, cp: &mut dyn DomainStore) -> CPResult<()> {
         if cp.is_empty(self.x) || cp.is_empty(self.y) {
             Err(Inconsistency)
@@ -106,7 +106,7 @@ mod test_lessorequal_var {
         let x = cp.new_int_var(12, 15);
         let y = cp.new_int_var(10, 20);
 
-        cp.install(&LessOrEqualVariable::new(x, y));
+        cp.install(&LessOrEqualVar::new(x, y));
         assert!(cp.fixpoint().is_ok());
         assert_eq!(Some(12), cp.min(y));
     }
@@ -116,7 +116,7 @@ mod test_lessorequal_var {
         let x = cp.new_int_var(10, 20);
         let y = cp.new_int_var(10, 20);
 
-        cp.install(&LessOrEqualVariable::new(x, y));
+        cp.install(&LessOrEqualVar::new(x, y));
         assert!(cp.fixpoint().is_ok());
 
         assert!(cp.remove_below(x, 12).is_ok());
@@ -130,7 +130,7 @@ mod test_lessorequal_var {
         let x = cp.new_int_var(10, 20);
         let y = cp.new_int_var(10, 15);
 
-        cp.install(&LessOrEqualVariable::new(x, y));
+        cp.install(&LessOrEqualVar::new(x, y));
         assert!(cp.fixpoint().is_ok());
         assert_eq!(Some(15), cp.max(x));
     }
@@ -140,7 +140,7 @@ mod test_lessorequal_var {
         let x = cp.new_int_var(10, 20);
         let y = cp.new_int_var(10, 20);
 
-        cp.install(&LessOrEqualVariable::new(x, y));
+        cp.install(&LessOrEqualVar::new(x, y));
         assert!(cp.fixpoint().is_ok());
 
         assert!(cp.remove_above(y, 15).is_ok());

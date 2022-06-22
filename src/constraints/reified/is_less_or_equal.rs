@@ -99,7 +99,6 @@ impl IsLessOrEqualConstant {
     }
 }
 
-
 /// This constraint enforce that b <==> (x <= y)
 #[derive(Debug, Clone, Copy)]
 pub struct IsLessOrEqualVar {
@@ -120,7 +119,7 @@ impl ModelingConstruct for IsLessOrEqualVar {
     fn install(&self, cp: &mut dyn ConstraintStore) {
         let me = *self;
         let prop = cp.post(Box::new(me));
-        
+
         cp.schedule(prop);
         cp.propagate_on(prop, DomainCondition::IsFixed(self.b));
         cp.propagate_on(prop, DomainCondition::MinimumChanged(self.x));
@@ -143,8 +142,8 @@ impl Propagator for IsLessOrEqualVar {
         } else if cp.is_false(self.b) {
             cp.remove_below(self.x, ymax + 1)?;
             cp.remove_above(self.y, xmin - 1)?;
-        } 
-        
+        }
+
         if xmax <= ymin {
             cp.fix_bool(self.b, true)?;
         } else if xmin > ymax {
@@ -325,7 +324,6 @@ mod test_is_le_const {
         assert_eq!(Some(0), cp.max(x));
     }
 }
-
 
 #[cfg(test)]
 mod test_is_le_var {

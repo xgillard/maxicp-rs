@@ -42,18 +42,18 @@ impl Propagator for GreaterOrEqualConstant {
 }
 /// This constraint enforces that x >= y
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct GreaterOrEqualVariable {
-    delegate: LessOrEqualVariable,
+pub struct GreaterOrEqualVar {
+    delegate: LessOrEqualVar,
 }
-impl GreaterOrEqualVariable {
+impl GreaterOrEqualVar {
     /// Creates a new instance of a constraint x >= y
     pub fn new(x: Variable, y: Variable) -> Self {
         Self {
-            delegate: LessOrEqualVariable::new(y, x),
+            delegate: LessOrEqualVar::new(y, x),
         }
     }
 }
-impl ModelingConstruct for GreaterOrEqualVariable {
+impl ModelingConstruct for GreaterOrEqualVar {
     fn install(&self, cp: &mut dyn ConstraintStore) {
         self.delegate.install(cp)
     }
@@ -84,7 +84,7 @@ mod test_greaterorequal_var {
         let x = cp.new_int_var(10, 15);
         let y = cp.new_int_var(10, 20);
 
-        cp.install(&GreaterOrEqualVariable::new(x, y));
+        cp.install(&GreaterOrEqualVar::new(x, y));
         assert!(cp.fixpoint().is_ok());
         assert_eq!(Some(15), cp.max(y));
     }
@@ -94,7 +94,7 @@ mod test_greaterorequal_var {
         let x = cp.new_int_var(10, 20);
         let y = cp.new_int_var(10, 20);
 
-        cp.install(&GreaterOrEqualVariable::new(x, y));
+        cp.install(&GreaterOrEqualVar::new(x, y));
         assert!(cp.fixpoint().is_ok());
 
         assert!(cp.remove_above(x, 15).is_ok());
@@ -108,7 +108,7 @@ mod test_greaterorequal_var {
         let x = cp.new_int_var(10, 20);
         let y = cp.new_int_var(12, 15);
 
-        cp.install(&GreaterOrEqualVariable::new(x, y));
+        cp.install(&GreaterOrEqualVar::new(x, y));
         assert!(cp.fixpoint().is_ok());
         assert_eq!(Some(12), cp.min(x));
     }
@@ -118,7 +118,7 @@ mod test_greaterorequal_var {
         let x = cp.new_int_var(10, 20);
         let y = cp.new_int_var(10, 20);
 
-        cp.install(&GreaterOrEqualVariable::new(x, y));
+        cp.install(&GreaterOrEqualVar::new(x, y));
         assert!(cp.fixpoint().is_ok());
 
         assert!(cp.remove_below(y, 12).is_ok());
