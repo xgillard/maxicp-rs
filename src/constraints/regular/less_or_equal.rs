@@ -23,7 +23,7 @@ pub struct LessOrEqualConstant {
     /// the constrained variable
     x: Variable,
     /// the value
-    v: isize
+    v: isize,
 }
 
 impl LessOrEqualConstant {
@@ -44,14 +44,13 @@ impl Propagator for LessOrEqualConstant {
     }
 }
 
-
 /// This constraint enforce that x <= y
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LessOrEqualVariable {
     /// the constrained variable
     x: Variable,
     /// the value
-    y: Variable
+    y: Variable,
 }
 
 impl LessOrEqualVariable {
@@ -72,7 +71,7 @@ impl ModelingConstruct for LessOrEqualVariable {
 }
 impl Propagator for LessOrEqualVariable {
     fn propagate(&self, cp: &mut dyn DomainStore) -> CPResult<()> {
-        if cp.is_empty(self.x) || cp.is_empty(self.y){
+        if cp.is_empty(self.x) || cp.is_empty(self.y) {
             Err(Inconsistency)
         } else {
             cp.remove_above(self.x, cp.max(self.y).unwrap())?;
@@ -150,4 +149,3 @@ mod test_lessorequal_var {
         assert_eq!(Some(15), cp.max(x));
     }
 }
-

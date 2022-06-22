@@ -13,15 +13,17 @@
 // Copyright (c)  2022 by X. Gillard
 //
 
-//! This module provides the implementation of useful constraints. The
-//! implementation of these constraint is split over in two modules. As the
-//! name suggests, the 'reified' submodule provides the implementation of the
-//! reified version of the constraints. The 'regular' module, on the other hand
-//! provides the implenetation of the constraints that can be installed onto the
-//! server but cannot be manipulated as 'conditions'.
+//! This module provides the *not reified* implementation of some useful
+//! constraints.
 
-mod regular;
-mod reified;
+mod absolute;
+mod equal;
+mod greater_or_equal;
+mod less_or_equal;
+mod not_equal;
 
-pub use regular::*;
-pub use reified::*;
+pub use absolute::*;
+pub use equal::*;
+pub use greater_or_equal::*;
+pub use less_or_equal::*;
+pub use not_equal::*;

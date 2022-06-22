@@ -187,7 +187,7 @@ mod test_absolute {
     fn simple_test_4() {
         let mut cp = DefaultCpModel::default();
         let x = cp.new_int_var(-5, 10);
-        let y = cp.new_int_var(-6,  7);
+        let y = cp.new_int_var(-6, 7);
 
         cp.install(&Absolute::new(x, y));
         assert!(cp.fixpoint().is_ok());

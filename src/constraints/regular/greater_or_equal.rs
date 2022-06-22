@@ -43,12 +43,14 @@ impl Propagator for GreaterOrEqualConstant {
 /// This constraint enforces that x >= y
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GreaterOrEqualVariable {
-    delegate: LessOrEqualVariable
+    delegate: LessOrEqualVariable,
 }
 impl GreaterOrEqualVariable {
     /// Creates a new instance of a constraint x >= y
     pub fn new(x: Variable, y: Variable) -> Self {
-        Self { delegate: LessOrEqualVariable::new(y, x) }
+        Self {
+            delegate: LessOrEqualVariable::new(y, x),
+        }
     }
 }
 impl ModelingConstruct for GreaterOrEqualVariable {
@@ -125,5 +127,3 @@ mod test_greaterorequal_var {
         assert_eq!(Some(12), cp.min(x));
     }
 }
-
-

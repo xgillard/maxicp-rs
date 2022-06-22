@@ -32,9 +32,15 @@ impl ModelingConstruct for IsLessOrEqualConstant {
     fn install(&self, cp: &mut dyn ConstraintStore) {
         let me = *self;
         let install = cp.post(Box::new(move |d: &mut dyn DomainStore| me.at_install(d)));
-        let b_fixed = cp.post(Box::new(move |d: &mut dyn DomainStore| me.upon_fixed_bool(d)));
-        let xmin_up = cp.post(Box::new(move |d: &mut dyn DomainStore| me.when_xmin_change(d)));
-        let xmax_dn = cp.post(Box::new(move |d: &mut dyn DomainStore| me.when_xmax_change(d)));
+        let b_fixed = cp.post(Box::new(move |d: &mut dyn DomainStore| {
+            me.upon_fixed_bool(d)
+        }));
+        let xmin_up = cp.post(Box::new(move |d: &mut dyn DomainStore| {
+            me.when_xmin_change(d)
+        }));
+        let xmax_dn = cp.post(Box::new(move |d: &mut dyn DomainStore| {
+            me.when_xmax_change(d)
+        }));
 
         cp.schedule(install);
         cp.propagate_on(b_fixed, DomainCondition::IsFixed(self.b));
@@ -105,7 +111,6 @@ mod test_is_le_const {
         let b = cp.new_bool_var();
         let v = 3;
 
-
         assert_eq!(Ok(()), cp.fix_bool(b, true));
         cp.install(&IsLessOrEqualConstant::new(b, x, v));
         assert_eq!(Ok(()), cp.fixpoint());
@@ -118,7 +123,6 @@ mod test_is_le_const {
         let x = cp.new_int_var(-10, 10);
         let b = cp.new_bool_var();
         let v = 3;
-
 
         assert_eq!(Ok(()), cp.fix_bool(b, false));
         cp.install(&IsLessOrEqualConstant::new(b, x, v));
@@ -176,7 +180,7 @@ mod test_is_le_const {
         assert_eq!(Some(0), cp.min(b));
         assert_eq!(Some(1), cp.max(b));
     }
-    
+
     // when b is fixed true -> it enforces x <= v
     #[test]
     fn if_b_is_true_on_propagate_condition_must_be_forced() {
