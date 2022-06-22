@@ -22,8 +22,11 @@ mod greater_or_equal;
 mod less_or_equal;
 mod not_equal;
 
+mod must_be_true;
+
 pub use absolute::*;
 pub use equal::*;
 pub use greater_or_equal::*;
 pub use less_or_equal::*;
+pub use must_be_true::*;
 pub use not_equal::*;

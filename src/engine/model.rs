@@ -1574,7 +1574,6 @@ mod test_default_model_constraintstore {
         assert_eq!(Some(9), model.max(z));
     }
 
-
     /// Any closure/function that accepts a mutable ref to the cp model can be
     /// a modeling construct. (This is mere convenience, not required to get something
     /// useable)
@@ -1594,11 +1593,9 @@ mod test_default_model_constraintstore {
         cp.install(&move |cp: &mut dyn CpModel| {
             let c1 = cp.post(Box::new(move |cp: &mut dyn CpModel| {
                 cp.install(&move |cp: &mut dyn CpModel| {
-                    let c2 = cp.post(Box::new(move |cp: &mut dyn CpModel|{
-                        cp.install(& move |cp: &mut dyn CpModel|{
-                            let c3 = cp.post(Box::new(move |cp: &mut dyn CpModel|{
-                                cp.fix(z, 3)
-                            }));
+                    let c2 = cp.post(Box::new(move |cp: &mut dyn CpModel| {
+                        cp.install(&move |cp: &mut dyn CpModel| {
+                            let c3 = cp.post(Box::new(move |cp: &mut dyn CpModel| cp.fix(z, 3)));
                             cp.schedule(c3);
                         });
                         cp.fix(y, 4)
