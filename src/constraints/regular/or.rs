@@ -16,6 +16,8 @@
 //! This module provides the implementation of the "or" (logical clause)
 //! constraint.
 
+use std::{rc::Rc, cell::{UnsafeCell}};
+
 use crate::prelude::*;
 
 /// This constraint enforces that a logical clause be true.
@@ -58,10 +60,10 @@ impl ModelingConstruct for Or {
                 // pin might make this intent clearer but it would type-bloat
                 // the rest of the code for no benefit)
                 unsafe {
-                    let mut boxed = Box::new(Clause::from(&*self));
-                    let pin_ptr = boxed.as_mut() as *mut Clause;
+                    let shared = Rc::new(UnsafeCell::new(Clause::from(&*self)));
+                    let boxed = Box::new(shared.clone());
                     let bcp = cp.post(boxed);
-                    (*pin_ptr).prop = Some(bcp);
+                    (*shared.get()).prop = Some(bcp);
 
                     cp.schedule(bcp);
                     cp.propagate_on(bcp, DomainCondition::IsFixed(self.literals[0]));
@@ -100,6 +102,11 @@ impl From<&Or> for Clause {
             literals: from.literals.clone(),
             prop: None,
         }
+    }
+}
+impl Propagator for Rc<UnsafeCell<Clause>> {
+    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
+        unsafe{ (*self.get()).propagate(cp) }
     }
 }
 impl Propagator for Clause {
