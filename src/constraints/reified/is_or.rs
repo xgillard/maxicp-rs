@@ -217,7 +217,7 @@ impl Clause {
 }
 
 #[cfg(test)]
-mod tests {
+mod tests_isor {
     use crate::prelude::*;
 
     #[test]

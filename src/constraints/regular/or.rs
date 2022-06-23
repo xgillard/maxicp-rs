@@ -171,7 +171,7 @@ impl Clause {
 }
 
 #[cfg(test)]
-mod tests {
+mod tests_or {
     use crate::prelude::*;
 
     #[test]
