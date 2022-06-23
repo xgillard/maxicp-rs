@@ -596,11 +596,11 @@ impl TrailedStateManager {
 //~~~~ UT BOOLEAN ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #[cfg(test)]
+#[cfg(debug_assertions)]
 mod test_saveandrestore {
     use super::*;
 
     #[test]
-    #[cfg(debug_assertions)]
     #[should_panic]
     fn can_not_pop_root_level() {
         let mut mgr = TrailedStateManager::new();
