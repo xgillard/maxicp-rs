@@ -120,7 +120,7 @@ impl EqualVar {
         // we could get rid of the allocation at each call, but it would require
         // to either restructure the code, or make 'drop' be a mutable static
         // variable. In that case, the mutation introduces potential dataraces
-        // which means the function would have to be marked unsafe.
+        // which is undefined behavior.
         let mut drop: Vec<isize> = vec![];
         for value in cp.iter(to) {
             if !cp.contains(from, value) {

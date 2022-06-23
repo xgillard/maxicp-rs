@@ -311,6 +311,7 @@ impl<T: StateManager> ConstraintStore for CpModelImpl<T> {
             if must_stop {
                 return CPResult::Ok(());
             } else {
+                // SAFETY:
                 // This block is marked unsafe because it requires two mutable
                 // borrows to self. While having a double mutable borrow to
                 // a given variable is a bad idea in general, it is ok to do it
@@ -330,13 +331,14 @@ impl<T: StateManager> ConstraintStore for CpModelImpl<T> {
                 // - __propagating ==> which is not accessible outside the model
                 unsafe {
                     let me = self as *mut Self;
-                    (*me).scheduled
+                    (*me)
+                        .scheduled
                         .drain()
                         .for_each(|c| (*me).__propagating.push(c));
 
                     for propagator in (*me).__propagating.drain(..) {
                         let propagator = (*me).propagators[propagator.0].as_mut();
-                        propagator.propagate(&mut (*me))?;
+                        propagator.propagate(&mut *me)?;
                     }
                 }
             }
