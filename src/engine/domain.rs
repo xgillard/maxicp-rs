@@ -30,7 +30,7 @@ pub struct Inconsistency;
 pub type CPResult<T> = Result<T, Inconsistency>;
 
 /// An integer variable that can be used in a CP model
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct Variable(usize);
 
 /// A domain store is the entity that gives a hook to propagators for modifying

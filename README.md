@@ -48,19 +48,14 @@ and maxicp (<https://pschaus.github.io/maxicp/>).
     * [X] is GE (var) :: b <==> (x >= y)
     * [X] must be true x + must be false
     * [X] or :: (w || x || y || z || ...)
-    * [ ] is or (var) :: b <==> (w || x || y || z || ...)
+    * [X] is or (var) :: b <==> (w || x || y || z || ...)
     * [ ] maximum
     * [ ] sum
-    * [ ] All diff binary
-    * [ ] All diff dc
-    * [ ] All diff fwc
-    * [ ] All diff binary
+    * [ ] All diff
     * [ ] circuit
     * [ ] cumulative
-    * [ ] cumulative decomp
     * [ ] disjunctive
     * [ ] element_1d
-    * [ ] element_1d DC
     * [ ] element_2d
 * [ ] Search
   * [ ] Implement search strategies

@@ -16,11 +16,16 @@
 //! This module provides the implementation of the "or" (logical clause)
 //! constraint.
 
-use std::{rc::Rc, cell::{UnsafeCell}};
+use std::{cell::UnsafeCell, rc::Rc};
 
 use crate::prelude::*;
 
 /// This constraint enforces that a logical clause be true.
+///
+/// Note:
+/// The clause imposes an additional invariant; in the vector of literals,
+/// all literals are meant to be unique (which does not precludes from using
+/// views on the same data)
 #[derive(Debug, Clone)]
 pub struct Or {
     /// Even though the variables in a CP solver are called variables, in the
@@ -33,7 +38,10 @@ pub struct Or {
 impl Or {
     /// Creates a new instance of the logical or constraint.
     pub fn new(literals: Vec<Variable>) -> Self {
-        Self { literals }
+        let mut me = Self { literals };
+        me.literals.sort_unstable();
+        me.literals.dedup();
+        me
     }
 }
 
@@ -106,7 +114,7 @@ impl From<&Or> for Clause {
 }
 impl Propagator for Rc<UnsafeCell<Clause>> {
     fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
-        unsafe{ (*self.get()).propagate(cp) }
+        unsafe { (*self.get()).propagate(cp) }
     }
 }
 impl Propagator for Clause {
@@ -171,7 +179,7 @@ mod tests {
         let mut cp = DefaultCpModel::default();
         let x = vec![];
 
-        cp.install(&mut Or::new(x.clone()));
+        cp.install(&mut Or::new(x));
         assert!(cp.fixpoint().is_err());
     }
     #[test]
@@ -190,11 +198,10 @@ mod tests {
         let b = cp.new_bool_var();
         let x = vec![b, b];
 
-        cp.install(&mut Or::new(x.clone()));
+        cp.install(&mut Or::new(x));
         assert!(cp.fixpoint().is_ok());
 
-        assert!(cp.fix_bool(b, false).is_ok());
-        assert!(cp.fixpoint().is_err());
+        assert!(cp.fix_bool(b, false).is_err());
     }
 
     #[test]
