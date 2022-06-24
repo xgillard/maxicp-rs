@@ -50,7 +50,7 @@ and maxicp (<https://pschaus.github.io/maxicp/>).
     * [X] or :: (w || x || y || z || ...)
     * [X] is or (var) :: b <==> (w || x || y || z || ...)
     * [X] and :: (w && x && y && z && ...)
-    * [ ] is and :: b <==> (w && x && y && z && ...)
+    * [X] is and :: b <==> (w && x && y && z && ...)
     * [ ] maximum
     * [ ] sum
     * [ ] All diff
