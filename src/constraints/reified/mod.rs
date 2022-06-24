@@ -21,6 +21,7 @@ mod is_less_or_equal;
 mod is_not_equal;
 mod is_or;
 mod is_and;
+mod is_maximum;
 
 pub use is_equal::*;
 pub use is_greater_or_equal::*;
@@ -28,3 +29,4 @@ pub use is_less_or_equal::*;
 pub use is_not_equal::*;
 pub use is_or::*;
 pub use is_and::*;
+pub use is_maximum::*;

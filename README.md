@@ -51,8 +51,8 @@ and maxicp (<https://pschaus.github.io/maxicp/>).
     * [X] is or (var) :: b <==> (w || x || y || z || ...)
     * [X] and :: (w && x && y && z && ...)
     * [X] is and :: b <==> (w && x && y && z && ...)
-    * [ ] maximum
-    * [ ] minimum
+    * [X] is maximum :: y = maximum(a, b, c, d, ...)
+    * [ ] minimum :: y = minimum(a, b, c, d, ...)
     * [ ] sum
     * [ ] All diff
     * [ ] circuit
@@ -77,4 +77,4 @@ and maxicp (<https://pschaus.github.io/maxicp/>).
   * [ ] Implement reversible stack (push only)
 * [ ] Engine
   * [ ] Implement sequence variables
-  * [ ] Implement more constraints (tables)
+  * [ ] Implement more constraints (tables, argmin, argmax)
