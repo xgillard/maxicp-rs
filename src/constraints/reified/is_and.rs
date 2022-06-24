@@ -13,7 +13,7 @@
 // Copyright (c)  2022 by X. Gillard
 //
 
-//! This module provides the implementation of the reified "and" (logical 
+//! This module provides the implementation of the reified "and" (logical
 //! conjunction) constraint.
 
 use std::{cell::UnsafeCell, rc::Rc};
@@ -77,9 +77,9 @@ impl ModelingConstruct for IsAnd {
 
                 // SAFETY:
                 // This unsafe block wont ever create a data race because the
-                // boxed conjunction is heap allocated; hence the actual 
-                // location of the conjunction remains fixed and will not move 
-                // (using an explicit pin might make this intent clearer but it 
+                // boxed conjunction is heap allocated; hence the actual
+                // location of the conjunction remains fixed and will not move
+                // (using an explicit pin might make this intent clearer but it
                 // would type-bloat the rest of the code for no benefit)
                 unsafe {
                     let shared = Rc::new(UnsafeCell::new(Conjunction::from(&*self)));
@@ -109,7 +109,7 @@ impl IsAnd {
 }
 
 /// A conjunction is the real structure implementing the actual boolean constraint
-/// propagation using the two watched literal scheme. It is very similar 
+/// propagation using the two watched literal scheme. It is very similar
 /// (actually, it is a pure symmetry of the Clause which is implemented for the
 /// is_or scheme using De Morgan's Law)
 ///
@@ -216,7 +216,6 @@ impl Conjunction {
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests_isand {

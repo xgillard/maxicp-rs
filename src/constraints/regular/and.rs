@@ -32,7 +32,9 @@ pub struct And {
 impl And {
     /// Creates a new instance of the logical and constraint.
     pub fn new(literals: Vec<Variable>) -> Self {
-        Self { literals: Rc::new(literals) }
+        Self {
+            literals: Rc::new(literals),
+        }
     }
 }
 

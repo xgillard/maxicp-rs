@@ -27,7 +27,6 @@ pub struct IsMinimum {
     x: Vec<Variable>,
 }
 
-
 impl IsMinimum {
     /// Creates a new instance of minimum constraint
     pub fn new(y: Variable, mut x: Vec<Variable>) -> Self {
@@ -40,7 +39,7 @@ impl IsMinimum {
 impl ModelingConstruct for IsMinimum {
     fn install(&mut self, cp: &mut dyn CpModel) {
         let prop = cp.post(Box::new(self.clone()));
-        
+
         cp.schedule(prop);
         cp.propagate_on(prop, DomainCondition::MinimumChanged(self.y));
         cp.propagate_on(prop, DomainCondition::MaximumChanged(self.y));
@@ -58,7 +57,7 @@ impl Propagator for IsMinimum {
         let mut n_support = 0;
         let mut support_var = None;
 
-        // calling the propagator when a variable has an empty domain is a 
+        // calling the propagator when a variable has an empty domain is a
         // BUG. It is okay to panic in that case.
         let ymin = cp.min(self.y).unwrap();
         let ymax = cp.max(self.y).unwrap();
@@ -78,7 +77,7 @@ impl Propagator for IsMinimum {
         if n_support == 1 {
             cp.remove_above(support_var.unwrap(), ymax)?;
         }
-        
+
         cp.remove_below(self.y, min)?;
         cp.remove_above(self.y, max)
     }
@@ -125,7 +124,7 @@ mod test_isminimum {
         cp.fixpoint().ok();
         assert_eq!(Some(-100), cp.min(y))
     }
-    
+
     // the xs impose the least maximum as max value for the domain of y
     #[test]
     fn the_xs_impose_their_least_maximum_as_maximum_of_y_at_install() {
@@ -194,7 +193,7 @@ mod test_isminimum {
 
         cp.install(&mut IsMinimum::new(y, xs.clone()));
         cp.fixpoint().ok();
-        
+
         cp.remove_below(y, 5).ok();
         cp.fixpoint().ok();
         for x in xs.iter().copied().take(3) {
@@ -216,7 +215,7 @@ mod test_isminimum {
 
         cp.install(&mut IsMinimum::new(y, xs.clone()));
         cp.fixpoint().ok();
-        
+
         assert!(cp.is_fixed(xs[0]));
         assert_eq!(Some(7), cp.min(xs[0]));
     }
@@ -234,7 +233,7 @@ mod test_isminimum {
 
         cp.install(&mut IsMinimum::new(y, xs.clone()));
         cp.fixpoint().ok();
-        
+
         cp.remove_below(xs[1], 10).ok();
         cp.remove_below(xs[2], 10).ok();
         cp.remove_below(xs[3], 10).ok();
@@ -267,7 +266,7 @@ mod test_isminimum {
 
         cp.install(&mut IsMinimum::new(y, xs.clone()));
         cp.fixpoint().ok();
-        
+
         assert!(cp.is_fixed(y));
         assert_eq!(Some(5), cp.min(y));
     }
@@ -284,12 +283,12 @@ mod test_isminimum {
 
         cp.install(&mut IsMinimum::new(y, xs.clone()));
         cp.fixpoint().ok();
-        
+
         for x in xs.iter().copied() {
             cp.fix(x, cp.min(x).unwrap()).ok();
         }
         cp.fixpoint().ok();
-        
+
         assert!(cp.is_fixed(y));
         assert_eq!(Some(-60), cp.min(y));
     }

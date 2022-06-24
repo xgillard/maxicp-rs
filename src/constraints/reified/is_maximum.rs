@@ -27,7 +27,6 @@ pub struct IsMaximum {
     x: Vec<Variable>,
 }
 
-
 impl IsMaximum {
     /// Creates a new instance of maximum constraint
     pub fn new(y: Variable, mut x: Vec<Variable>) -> Self {
@@ -40,7 +39,7 @@ impl IsMaximum {
 impl ModelingConstruct for IsMaximum {
     fn install(&mut self, cp: &mut dyn CpModel) {
         let prop = cp.post(Box::new(self.clone()));
-        
+
         cp.schedule(prop);
         cp.propagate_on(prop, DomainCondition::MinimumChanged(self.y));
         cp.propagate_on(prop, DomainCondition::MaximumChanged(self.y));
@@ -58,7 +57,7 @@ impl Propagator for IsMaximum {
         let mut n_support = 0;
         let mut support_var = None;
 
-        // calling the propagator when a variable has an empty domain is a 
+        // calling the propagator when a variable has an empty domain is a
         // BUG. It is okay to panic in that case.
         let ymin = cp.min(self.y).unwrap();
         let ymax = cp.max(self.y).unwrap();
@@ -78,7 +77,7 @@ impl Propagator for IsMaximum {
         if n_support == 1 {
             cp.remove_below(support_var.unwrap(), ymin)?;
         }
-        
+
         cp.remove_below(self.y, min)?;
         cp.remove_above(self.y, max)
     }
@@ -123,7 +122,7 @@ mod test_ismaximum {
         cp.fixpoint().ok();
         assert_eq!(Some(10), cp.min(y))
     }
-    
+
     // the xs impose the greatest maximum as max value for the domain of y
     #[test]
     fn the_xs_impose_their_greatest_maximum_as_maximum_of_y_at_install() {
@@ -194,7 +193,7 @@ mod test_ismaximum {
 
         cp.install(&mut IsMaximum::new(y, xs.clone()));
         cp.fixpoint().ok();
-        
+
         cp.remove_above(y, 20).ok();
         cp.fixpoint().ok();
         for x in xs.iter().copied().take(3) {
@@ -216,7 +215,7 @@ mod test_ismaximum {
 
         cp.install(&mut IsMaximum::new(y, xs.clone()));
         cp.fixpoint().ok();
-        
+
         assert!(cp.is_fixed(xs[0]));
         assert_eq!(Some(7), cp.min(xs[0]));
     }
@@ -234,7 +233,7 @@ mod test_ismaximum {
 
         cp.install(&mut IsMaximum::new(y, xs.clone()));
         cp.fixpoint().ok();
-        
+
         cp.remove_above(xs[1], -15).ok();
         cp.remove_above(xs[2], -15).ok();
         cp.remove_above(xs[3], -15).ok();
@@ -273,7 +272,7 @@ mod test_ismaximum {
 
         cp.install(&mut IsMaximum::new(y, xs.clone()));
         cp.fixpoint().ok();
-        
+
         assert!(cp.is_fixed(y));
         assert_eq!(Some(60), cp.min(y));
     }
@@ -290,12 +289,12 @@ mod test_ismaximum {
 
         cp.install(&mut IsMaximum::new(y, xs.clone()));
         cp.fixpoint().ok();
-        
+
         for x in xs.iter().copied() {
             cp.fix(x, cp.max(x).unwrap()).ok();
         }
         cp.fixpoint().ok();
-        
+
         assert!(cp.is_fixed(y));
         assert_eq!(Some(60), cp.min(y));
     }
