@@ -39,13 +39,13 @@ impl And {
 }
 
 impl ModelingConstruct for And {
-    fn install(&mut self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut CpModel) {
         let c = cp.post(Box::new(self.clone()));
         cp.schedule(c)
     }
 }
 impl Propagator for And {
-    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
+    fn propagate(&mut self, cp: &mut CpModel) -> CPResult<()> {
         for l in self.literals.iter().copied() {
             cp.fix_bool(l, true)?;
         }
@@ -59,7 +59,7 @@ mod tests_and {
 
     #[test]
     fn this_constraint_forces_all_literal_true() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = vec![
             cp.new_bool_var(),
             cp.new_bool_var(),

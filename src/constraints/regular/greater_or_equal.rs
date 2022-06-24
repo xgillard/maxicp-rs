@@ -30,13 +30,13 @@ impl GreaterOrEqualConstant {
     }
 }
 impl ModelingConstruct for GreaterOrEqualConstant {
-    fn install(&mut self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut CpModel) {
         let me = cp.post(Box::new(*self));
         cp.schedule(me)
     }
 }
 impl Propagator for GreaterOrEqualConstant {
-    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
+    fn propagate(&mut self, cp: &mut CpModel) -> CPResult<()> {
         cp.remove_below(self.x, self.v)
     }
 }
@@ -54,7 +54,7 @@ impl GreaterOrEqualVar {
     }
 }
 impl ModelingConstruct for GreaterOrEqualVar {
-    fn install(&mut self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut CpModel) {
         self.delegate.install(cp)
     }
 }
@@ -65,7 +65,7 @@ mod test_greaterorequal_const {
 
     #[test]
     fn is_sets_the_min() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(10, 20);
         let v = 15;
 
@@ -80,7 +80,7 @@ mod test_greaterorequal_var {
 
     #[test]
     fn x_imposes_its_max_when_least_at_install() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(10, 15);
         let y = cp.new_int_var(10, 20);
 
@@ -90,7 +90,7 @@ mod test_greaterorequal_var {
     }
     #[test]
     fn x_imposes_its_max_when_least_at_update() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(10, 20);
         let y = cp.new_int_var(10, 20);
 
@@ -104,7 +104,7 @@ mod test_greaterorequal_var {
     }
     #[test]
     fn y_imposes_its_min_when_greatest_at_install() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(10, 20);
         let y = cp.new_int_var(12, 15);
 
@@ -114,7 +114,7 @@ mod test_greaterorequal_var {
     }
     #[test]
     fn y_imposes_its_min_when_greatest_at_update() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(10, 20);
         let y = cp.new_int_var(10, 20);
 

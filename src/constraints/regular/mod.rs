@@ -16,23 +16,29 @@
 //! This module provides the *not reified* implementation of some useful
 //! constraints.
 
-mod absolute;
-mod equal;
-mod greater_or_equal;
-mod less_or_equal;
-mod not_equal;
-
 mod must_be_true;
-
-pub use absolute::*;
-pub use equal::*;
-pub use greater_or_equal::*;
-pub use less_or_equal::*;
 pub use must_be_true::*;
+
+mod equal;
+pub use equal::*;
+
+mod not_equal;
 pub use not_equal::*;
+
+mod less_or_equal;
+pub use less_or_equal::*;
+
+mod greater_or_equal;
+pub use greater_or_equal::*;
+
+mod and;
+pub use and::*;
 
 mod or;
 pub use or::*;
 
-mod and;
-pub use and::*;
+mod absolute;
+pub use absolute::*;
+
+mod sum;
+pub use sum::*;

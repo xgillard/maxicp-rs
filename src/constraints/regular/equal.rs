@@ -30,13 +30,13 @@ impl EqualConstant {
     }
 }
 impl ModelingConstruct for EqualConstant {
-    fn install(&mut self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut CpModel) {
         let constraint = cp.post(Box::new(*self));
         cp.schedule(constraint);
     }
 }
 impl Propagator for EqualConstant {
-    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
+    fn propagate(&mut self, cp: &mut CpModel) -> CPResult<()> {
         cp.fix(self.x, self.v)
     }
 }
@@ -54,7 +54,7 @@ impl EqualVar {
     }
 }
 impl ModelingConstruct for EqualVar {
-    fn install(&mut self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut CpModel) {
         let at_post = cp.post(Box::new(self.at_post()));
         let x_changed = cp.post(Box::new(self.on_x_domain_change()));
         let y_changed = cp.post(Box::new(self.on_y_domain_change()));
@@ -66,7 +66,7 @@ impl ModelingConstruct for EqualVar {
 }
 impl EqualVar {
     fn at_post(self) -> impl Propagator {
-        move |cp: &mut dyn CpModel| {
+        move |cp: &mut CpModel| {
             if cp.is_fixed(self.x) {
                 cp.fix(self.y, cp.min(self.x).unwrap())
             } else if cp.is_fixed(self.y) {
@@ -81,21 +81,21 @@ impl EqualVar {
     }
 
     fn on_x_domain_change(self) -> impl Propagator {
-        move |dom: &mut dyn CpModel| {
+        move |dom: &mut CpModel| {
             self.bounds_intersect(dom)?;
             Self::prune_equals(self.x, self.y, dom)?;
             Ok(())
         }
     }
     fn on_y_domain_change(self) -> impl Propagator {
-        move |dom: &mut dyn CpModel| {
+        move |dom: &mut CpModel| {
             self.bounds_intersect(dom)?;
             Self::prune_equals(self.y, self.x, dom)?;
             Ok(())
         }
     }
 
-    fn bounds_intersect(self, cp: &mut dyn CpModel) -> CPResult<()> {
+    fn bounds_intersect(self, cp: &mut CpModel) -> CPResult<()> {
         if cp.is_empty(self.x) || cp.is_empty(self.y) {
             Err(Inconsistency)
         } else {
@@ -116,7 +116,7 @@ impl EqualVar {
 
     // dom consistent filtering in the direction from -> to
     // every value of to has a support in from
-    fn prune_equals(from: Variable, to: Variable, cp: &mut dyn CpModel) -> CPResult<()> {
+    fn prune_equals(from: Variable, to: Variable, cp: &mut CpModel) -> CPResult<()> {
         // we could get rid of the allocation at each call, but it would require
         // to either restructure the code, or make 'drop' be a mutable static
         // variable. In that case, the mutation introduces potential dataraces
@@ -140,7 +140,7 @@ mod test_equal_const {
 
     #[test]
     fn it_just_fixes_it() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(-7, 7);
 
         cp.install(&mut EqualConstant::new(x, 2));
@@ -162,7 +162,7 @@ mod test_equal_var {
 
     #[test]
     fn test_x_fixed_at_post() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(10, 10);
         let y = cp.new_int_var(0, 10);
 
@@ -177,7 +177,7 @@ mod test_equal_var {
 
     #[test]
     fn test_y_fixed_at_post() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(0, 10);
         let y = cp.new_int_var(10, 10);
 
@@ -192,7 +192,7 @@ mod test_equal_var {
 
     #[test]
     fn test_1() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(0, 10);
         let y = cp.new_int_var(0, 10);
 
@@ -218,7 +218,7 @@ mod test_equal_var {
 
     #[test]
     fn test_2() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(isize::MAX - 20, isize::MAX - 1);
         let y = cp.new_int_var(isize::MAX - 10, isize::MAX - 1);
 

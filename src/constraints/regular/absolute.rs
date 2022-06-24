@@ -15,7 +15,7 @@
 
 //! This module provides the implementation of the absolute value constraint.
 
-use crate::{CPResult, CpModel, Inconsistency, ModelingConstruct, Propagator, Variable};
+use crate::{CPResult, CpModel, Inconsistency, ModelingConstruct, Propagator, Variable, ConstraintStore, DomainStore};
 
 use crate::DomainCondition::*;
 
@@ -32,7 +32,7 @@ impl Absolute {
     }
 }
 impl ModelingConstruct for Absolute {
-    fn install(&mut self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut CpModel) {
         let at_post = cp.post(self.at_post());
         let propagate = cp.post(Box::new(*self));
 
@@ -48,14 +48,14 @@ impl Absolute {
     /// is installed
     fn at_post(mut self) -> Box<dyn Propagator> {
         let y = self.y;
-        Box::new(move |cp: &mut dyn CpModel| {
+        Box::new(move |cp: &mut CpModel| {
             cp.remove_below(y, 0)?;
             self.propagate(cp)
         })
     }
 }
 impl Propagator for Absolute {
-    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
+    fn propagate(&mut self, cp: &mut CpModel) -> CPResult<()> {
         let x = self.x;
         let y = self.y;
         if cp.is_empty(x) || cp.is_empty(y) {
@@ -114,7 +114,7 @@ mod test_absolute {
 
     #[test]
     fn simple_test_0() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(-5, 5);
         let y = cp.new_int_var(-10, 10);
 
@@ -138,7 +138,7 @@ mod test_absolute {
 
     #[test]
     fn simple_test_1() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(-5, 5);
         let y = cp.new_int_var(-10, 10);
 
@@ -155,7 +155,7 @@ mod test_absolute {
 
     #[test]
     fn simple_test_2() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(-5, 0);
         let y = cp.new_int_var(4, 4);
 
@@ -169,7 +169,7 @@ mod test_absolute {
 
     #[test]
     fn simple_test_3() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(7, 7);
         let y = cp.new_int_var(-1000, 12);
 
@@ -183,7 +183,7 @@ mod test_absolute {
 
     #[test]
     fn simple_test_4() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(-5, 10);
         let y = cp.new_int_var(-6, 7);
 

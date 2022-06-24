@@ -53,7 +53,8 @@ and maxicp (<https://github.com/pschaus/maxicp/>).
     * [X] is and :: b <==> (w && x && y && z && ...)
     * [X] is maximum :: y = maximum(a, b, c, d, ...)
     * [X] is minimum :: y = minimum(a, b, c, d, ...)
-    * [ ] sum
+    * [X] sum :: sum(a, b, c, d, ...) == 0
+    * [ ] is sum :: y = sum(a, b, c, d, ...)
     * [ ] All diff
     * [ ] circuit
     * [ ] cumulative

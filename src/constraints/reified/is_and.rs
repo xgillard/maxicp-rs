@@ -48,12 +48,12 @@ impl IsAnd {
 }
 
 impl ModelingConstruct for IsAnd {
-    fn install(&mut self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut CpModel) {
         match self.literals.len() {
             0 => {
                 // an empty conjunction is always true: by definition
                 let b = self.b;
-                let c = cp.post(Box::new(move |cp: &mut dyn CpModel| cp.fix(b, 1)));
+                let c = cp.post(Box::new(move |cp: &mut CpModel| cp.fix(b, 1)));
                 cp.schedule(c);
             }
             1 => {
@@ -61,10 +61,10 @@ impl ModelingConstruct for IsAnd {
                 let b = self.b;
                 let x = self.literals[0];
 
-                let fix_x = cp.post(Box::new(move |cp: &mut dyn CpModel| {
+                let fix_x = cp.post(Box::new(move |cp: &mut CpModel| {
                     Self::boolean_equality(x, b, cp)
                 }));
-                let fix_b = cp.post(Box::new(move |cp: &mut dyn CpModel| {
+                let fix_b = cp.post(Box::new(move |cp: &mut CpModel| {
                     Self::boolean_equality(b, x, cp)
                 }));
                 cp.schedule(fix_x);
@@ -97,7 +97,7 @@ impl ModelingConstruct for IsAnd {
     }
 }
 impl IsAnd {
-    fn boolean_equality(a: Variable, b: Variable, cp: &mut dyn CpModel) -> CPResult<()> {
+    fn boolean_equality(a: Variable, b: Variable, cp: &mut CpModel) -> CPResult<()> {
         if cp.is_true(a) {
             cp.fix_bool(b, true)
         } else if cp.is_false(a) {
@@ -142,12 +142,12 @@ impl From<&IsAnd> for Conjunction {
     }
 }
 impl Propagator for Rc<UnsafeCell<Conjunction>> {
-    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
+    fn propagate(&mut self, cp: &mut CpModel) -> CPResult<()> {
         unsafe { (*self.get()).propagate(cp) }
     }
 }
 impl Propagator for Conjunction {
-    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
+    fn propagate(&mut self, cp: &mut CpModel) -> CPResult<()> {
         if cp.is_true(self.b) {
             for l in self.literals.iter().copied() {
                 cp.fix_bool(l, true)?;
@@ -191,7 +191,7 @@ impl Conjunction {
     /// of the old WL with that of the new and returns true. In the event where
     /// no new WL can be found, the method returns false as a means to tell the
     /// caller that some propagation must occur.
-    fn falsifiable_watched_literal(&mut self, cp: &mut dyn CpModel, wlpos: usize) -> bool {
+    fn falsifiable_watched_literal(&mut self, cp: &mut CpModel, wlpos: usize) -> bool {
         if cp.is_true(self.literals[wlpos]) {
             let other = self
                 .literals
@@ -223,7 +223,7 @@ mod tests_isand {
 
     #[test]
     fn empty_clause_is_always_true() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = vec![];
 
@@ -233,7 +233,7 @@ mod tests_isand {
     }
     #[test]
     fn unit_clause_means_b_and_single_literal_are_equal() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let c = cp.new_bool_var();
         let x = vec![c];
@@ -273,7 +273,7 @@ mod tests_isand {
 
     #[test]
     fn focing_all_literals_to_true_must_satisfy_b() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = vec![
             cp.new_bool_var(),
@@ -294,7 +294,7 @@ mod tests_isand {
 
     #[test]
     fn focing_some_watched_literals_to_false_must_falsify_b() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = vec![
             cp.new_bool_var(),
@@ -320,7 +320,7 @@ mod tests_isand {
 
     #[test]
     fn focing_b_to_true_must_turn_all_literals_true() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = vec![
             cp.new_bool_var(),
@@ -341,7 +341,7 @@ mod tests_isand {
 
     #[test]
     fn focing_b_to_false_eventually_turns_a_literal_off() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = vec![
             cp.new_bool_var(),
@@ -367,7 +367,7 @@ mod tests_isand {
 
     #[test]
     fn it_works_fine_with_duplicates() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let c = cp.new_bool_var();
         let x = vec![c, c];

@@ -29,13 +29,13 @@ impl MustBeTrue {
     }
 }
 impl ModelingConstruct for MustBeTrue {
-    fn install(&mut self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut CpModel) {
         let c = cp.post(Box::new(*self));
         cp.schedule(c)
     }
 }
 impl Propagator for MustBeTrue {
-    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
+    fn propagate(&mut self, cp: &mut CpModel) -> CPResult<()> {
         cp.fix(self.x, 1)
     }
 }
@@ -51,13 +51,13 @@ impl MustBeFalse {
     }
 }
 impl ModelingConstruct for MustBeFalse {
-    fn install(&mut self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut CpModel) {
         let c = cp.post(Box::new(*self));
         cp.schedule(c)
     }
 }
 impl Propagator for MustBeFalse {
-    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
+    fn propagate(&mut self, cp: &mut CpModel) -> CPResult<()> {
         cp.fix(self.x, 0)
     }
 }
@@ -68,7 +68,7 @@ mod test_mustbe_truefalse {
 
     #[test]
     fn must_be_true_forces_a_boolean_value() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
 
         let b = cp.new_bool_var();
         cp.install(&mut MustBeTrue::new(b));
@@ -79,7 +79,7 @@ mod test_mustbe_truefalse {
 
     #[test]
     fn must_be_false_forces_a_boolean_value() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
 
         let b = cp.new_bool_var();
         cp.install(&mut MustBeFalse::new(b));
@@ -89,7 +89,7 @@ mod test_mustbe_truefalse {
     }
     #[test]
     fn cant_apply_both_constraints_at_once() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
 
         let b = cp.new_bool_var();
         cp.install(&mut MustBeTrue::new(b));

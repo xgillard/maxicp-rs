@@ -37,7 +37,7 @@ impl IsMaximum {
     }
 }
 impl ModelingConstruct for IsMaximum {
-    fn install(&mut self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut CpModel) {
         let prop = cp.post(Box::new(self.clone()));
 
         cp.schedule(prop);
@@ -50,7 +50,7 @@ impl ModelingConstruct for IsMaximum {
     }
 }
 impl Propagator for IsMaximum {
-    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
+    fn propagate(&mut self, cp: &mut CpModel) -> CPResult<()> {
         let mut min = isize::MIN;
         let mut max = isize::MIN;
 
@@ -90,7 +90,7 @@ mod test_ismaximum {
     // the xs impose the greatest minimum as min value for the domain of y
     #[test]
     fn the_xs_impose_their_greatest_minimum_as_minimum_of_y_at_install() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let y = cp.new_int_var(-20, 20);
         let xs = vec![
             cp.new_int_var(-20, 20),
@@ -106,7 +106,7 @@ mod test_ismaximum {
     }
     #[test]
     fn the_xs_impose_their_greatest_minimum_as_minimum_of_y_at_propag() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let y = cp.new_int_var(-20, 20);
         let xs = vec![
             cp.new_int_var(-20, 20),
@@ -126,7 +126,7 @@ mod test_ismaximum {
     // the xs impose the greatest maximum as max value for the domain of y
     #[test]
     fn the_xs_impose_their_greatest_maximum_as_maximum_of_y_at_install() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let y = cp.new_int_var(-200, 200);
         let xs = vec![
             cp.new_int_var(-20, 20),
@@ -142,7 +142,7 @@ mod test_ismaximum {
     }
     #[test]
     fn the_xs_impose_their_greatest_maximum_as_maximum_of_y_at_propag() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let y = cp.new_int_var(-200, 200);
         let xs = vec![
             cp.new_int_var(-20, 60),
@@ -164,7 +164,7 @@ mod test_ismaximum {
     // y imposes its maximum as max to all xs
     #[test]
     fn y_imposes_its_maximum_to_all_xs_at_install() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let y = cp.new_int_var(-200, 20);
         let xs = vec![
             cp.new_int_var(-20, 60),
@@ -182,7 +182,7 @@ mod test_ismaximum {
     }
     #[test]
     fn y_imposes_its_maximum_to_all_xs_at_propag() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let y = cp.new_int_var(-200, 200);
         let xs = vec![
             cp.new_int_var(-20, 60),
@@ -204,7 +204,7 @@ mod test_ismaximum {
     // y forces the value of its last support
     #[test]
     fn y_imposes_its_value_to_last_support_at_install() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let y = cp.new_int_var(7, 7);
         let xs = vec![
             cp.new_int_var(-20, 10),
@@ -222,7 +222,7 @@ mod test_ismaximum {
 
     #[test]
     fn y_imposes_its_value_to_last_support_at_propag() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let y = cp.new_int_var(-20, 20);
         let xs = vec![
             cp.new_int_var(-20, 20),
@@ -261,7 +261,7 @@ mod test_ismaximum {
     // when all x are fixed, y equates to the maximum value among xs
     #[test]
     fn when_all_xs_are_fixed_y_must_equate_to_maximum_among_them_at_install() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let y = cp.new_int_var(-200, 200);
         let xs = vec![
             cp.new_int_var(20, 20),
@@ -278,7 +278,7 @@ mod test_ismaximum {
     }
     #[test]
     fn when_all_xs_are_fixed_y_must_equate_to_maximum_among_them_at_propag() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let y = cp.new_int_var(-200, 200);
         let xs = vec![
             cp.new_int_var(-20, 20),

@@ -33,13 +33,13 @@ impl LessOrEqualConstant {
     }
 }
 impl ModelingConstruct for LessOrEqualConstant {
-    fn install(&mut self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut CpModel) {
         let me = cp.post(Box::new(*self));
         cp.schedule(me)
     }
 }
 impl Propagator for LessOrEqualConstant {
-    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
+    fn propagate(&mut self, cp: &mut CpModel) -> CPResult<()> {
         cp.remove_above(self.x, self.v)
     }
 }
@@ -60,7 +60,7 @@ impl LessOrEqualVar {
     }
 }
 impl ModelingConstruct for LessOrEqualVar {
-    fn install(&mut self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut CpModel) {
         let me = cp.post(Box::new(*self));
         cp.schedule(me);
         cp.propagate_on(me, DomainCondition::MinimumChanged(self.x));
@@ -70,7 +70,7 @@ impl ModelingConstruct for LessOrEqualVar {
     }
 }
 impl Propagator for LessOrEqualVar {
-    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
+    fn propagate(&mut self, cp: &mut CpModel) -> CPResult<()> {
         if cp.is_empty(self.x) || cp.is_empty(self.y) {
             Err(Inconsistency)
         } else {
@@ -87,7 +87,7 @@ mod test_lessorequal_const {
 
     #[test]
     fn is_sets_the_max() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(10, 20);
         let v = 15;
 
@@ -102,7 +102,7 @@ mod test_lessorequal_var {
 
     #[test]
     fn x_imposes_its_min_when_least_at_install() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(12, 15);
         let y = cp.new_int_var(10, 20);
 
@@ -112,7 +112,7 @@ mod test_lessorequal_var {
     }
     #[test]
     fn x_imposes_its_min_when_least_at_update() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(10, 20);
         let y = cp.new_int_var(10, 20);
 
@@ -126,7 +126,7 @@ mod test_lessorequal_var {
     }
     #[test]
     fn y_imposes_its_max_when_least_at_install() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(10, 20);
         let y = cp.new_int_var(10, 15);
 
@@ -136,7 +136,7 @@ mod test_lessorequal_var {
     }
     #[test]
     fn y_imposes_its_max_when_least_at_update() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(10, 20);
         let y = cp.new_int_var(10, 20);
 

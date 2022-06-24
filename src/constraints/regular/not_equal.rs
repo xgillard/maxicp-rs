@@ -32,13 +32,13 @@ impl NotEqualConstant {
     }
 }
 impl ModelingConstruct for NotEqualConstant {
-    fn install(&mut self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut CpModel) {
         let constraint = cp.post(Box::new(*self));
         cp.schedule(constraint);
     }
 }
 impl Propagator for NotEqualConstant {
-    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
+    fn propagate(&mut self, cp: &mut CpModel) -> CPResult<()> {
         cp.remove(self.x, self.v)
     }
 }
@@ -57,7 +57,7 @@ impl NotEqualVar {
     }
 }
 impl ModelingConstruct for NotEqualVar {
-    fn install(&mut self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut CpModel) {
         let x_fixed = cp.post(Box::new(self.on_x_fixed()));
         let y_fixed = cp.post(Box::new(self.on_y_fixed()));
 
@@ -67,10 +67,10 @@ impl ModelingConstruct for NotEqualVar {
 }
 impl NotEqualVar {
     fn on_x_fixed(self) -> impl Propagator {
-        move |dom: &mut dyn CpModel| dom.remove(self.y, dom.min(self.x).unwrap())
+        move |dom: &mut CpModel| dom.remove(self.y, dom.min(self.x).unwrap())
     }
     fn on_y_fixed(self) -> impl Propagator {
-        move |dom: &mut dyn CpModel| dom.remove(self.x, dom.min(self.y).unwrap())
+        move |dom: &mut CpModel| dom.remove(self.x, dom.min(self.y).unwrap())
     }
 }
 
@@ -80,7 +80,7 @@ mod test_notequal_const {
 
     #[test]
     fn it_removes_the_const_on_install() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(0, 10);
 
         cp.install(&mut NotEqualConstant::new(x, 6));
@@ -95,7 +95,7 @@ mod test_notequal_var {
 
     #[test]
     fn x_propagates_to_y() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(0, 10);
         let y = cp.new_int_var(0, 10);
 
@@ -111,7 +111,7 @@ mod test_notequal_var {
 
     #[test]
     fn y_propagates_to_x() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(0, 10);
         let y = cp.new_int_var(0, 10);
 

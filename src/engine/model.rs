@@ -21,7 +21,7 @@ use std::collections::hash_map::Entry;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
-    DomainBroker, DomainStoreImpl, ReversibleInt, SaveAndRestore, StateManager,
+    DomainBroker, DomainStoreImpl, IntManager, ReversibleInt, SaveAndRestore,
     TrailedStateManager, Variable,
 };
 
@@ -67,15 +67,6 @@ pub trait ConstraintStore {
     fn fixpoint(&mut self) -> CPResult<()>;
 }
 
-/// The basic expectation of a CP model is that it lets us create variables
-/// (hence the DomainStore responsibility), install constraints bearing on
-/// these variables (hence the ConstraintStore responsibility) and that its
-/// state can be efficiently saved and restored to a previous snapshot during
-/// the search for a satisfying -- or optimal -- solution (hence the
-/// SaveAndRestore responsibility). A CP model *must* implement all three of
-/// these responsibilities in order to match common expectations.
-pub trait CpModel: DomainStore + ConstraintStore {}
-
 /// This trait stands for the modeling constructs which you'll want to work
 /// with when representing the problem you intend to solve. These modeling
 /// constructs are often referred to as constraints, but this implementation
@@ -85,7 +76,7 @@ pub trait ModelingConstruct {
     /// This method installs the current modeling construct (which might
     /// consist of several underlying propagators/constraints) into the
     /// constraint store which will schedule its propagators as needed.
-    fn install(&mut self, cp: &mut dyn CpModel);
+    fn install(&mut self, cp: &mut CpModel);
 }
 
 /// The propagator is the portion of the code where the magic actually happens.
@@ -94,27 +85,17 @@ pub trait ModelingConstruct {
 /// works on.
 pub trait Propagator {
     /// Actually runs the custom propagation algorithm
-    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()>;
+    fn propagate(&mut self, cp: &mut CpModel) -> CPResult<()>;
 }
 
 /// Any closure/function that accepts a mutable ref to the cp model can be
 /// a propagator. (This is mere convenience, not required to get something
 /// useable)
-impl<F: FnMut(&mut dyn CpModel) -> CPResult<()>> Propagator for F {
-    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
+impl<F: FnMut(&mut CpModel) -> CPResult<()>> Propagator for F {
+    fn propagate(&mut self, cp: &mut CpModel) -> CPResult<()> {
         self(cp)
     }
 }
-
-/// This is the type of the CP model you will likely want to work with. \
-/// Currently, this is the only available implementation of a CP Model, but it
-/// *might* possibly change in the future.
-pub type DefaultCpModel = CpModelImpl<TrailedStateManager>;
-
-/// This is the type of constraint store implementation you will likely want to
-/// use in your solver. Currently, this is the only available implementation of
-/// a CS but it *might* possibly change in the future.
-pub type DefaultConstraintStore = DefaultCpModel;
 
 /// This is a simple implementation of a constraint store.
 ///
@@ -124,9 +105,9 @@ pub type DefaultConstraintStore = DefaultCpModel;
 /// store with save and restore capabilities. The implementation of these traits
 /// is simply delegated to another structure that actually implements some
 /// business logic for it.
-pub struct CpModelImpl<T: StateManager> {
+pub struct CpModel {
     /// The domain store which is used to manage the problem variables
-    domains: DomainStoreImpl<T>,
+    domains: DomainStoreImpl<TrailedStateManager>,
     /// This establishes a correspondence between a domain condition and all
     /// the porpagators that need to be scheduled
     listeners: FxHashMap<DomainCondition, FxHashSet<Constraint>>,
@@ -165,15 +146,11 @@ pub struct CpModelImpl<T: StateManager> {
     /// costly heap allocations.
     __propagating: Vec<Constraint>,
 }
-//------------------------------------------------------------------------------
-// Obviously, we want a CpModelImpl to be an implementation of a CpModel
-// even though it adds absolutely no behavior.
-//------------------------------------------------------------------------------
-impl<T: StateManager> CpModel for CpModelImpl<T> {}
+
 //------------------------------------------------------------------------------
 // Domain store facet
 //------------------------------------------------------------------------------
-impl<T: StateManager> DomainStore for CpModelImpl<T> {
+impl DomainStore for CpModel {
     fn new_int_var(&mut self, min: isize, max: isize) -> Variable {
         self.domains.new_int_var(min, max)
     }
@@ -236,7 +213,7 @@ impl<T: StateManager> DomainStore for CpModelImpl<T> {
 //------------------------------------------------------------------------------
 // Save and Restore management
 //------------------------------------------------------------------------------
-impl<T: StateManager> SaveAndRestore for CpModelImpl<T> {
+impl SaveAndRestore for CpModel {
     fn save_state(&mut self) {
         self.domains.save_state()
     }
@@ -265,7 +242,7 @@ impl<T: StateManager> SaveAndRestore for CpModelImpl<T> {
 //------------------------------------------------------------------------------
 // Constraint store
 //------------------------------------------------------------------------------
-impl<T: StateManager> ConstraintStore for CpModelImpl<T> {
+impl ConstraintStore for CpModel {
     fn install(&mut self, modeling_construct: &mut dyn ModelingConstruct) {
         modeling_construct.install(self)
     }
@@ -346,22 +323,18 @@ impl<T: StateManager> ConstraintStore for CpModelImpl<T> {
     }
 }
 
-impl<T: StateManager> From<T> for CpModelImpl<T> {
-    fn from(sm: T) -> Self {
-        Self::new(sm)
-    }
-}
-impl<T: StateManager + Default> Default for CpModelImpl<T> {
+impl Default for CpModel {
     fn default() -> Self {
-        Self::from(T::default())
+        Self::new()
     }
 }
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // ~~~ UTILITY METHODS ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-impl<T: StateManager> CpModelImpl<T> {
+impl CpModel {
     /// Creates a new instance of the constraint store
-    pub fn new(mut sm: T) -> Self {
+    pub fn new() -> Self {
+        let mut sm = TrailedStateManager::default();
         let conditions_sz = sm.manage_int(0);
         let propagator_sz = sm.manage_int(0);
         Self {
@@ -376,30 +349,30 @@ impl<T: StateManager> CpModelImpl<T> {
         }
     }
     /// Utility to reach the underlying state manager
-    fn sm(&self) -> &T {
+    pub fn state_manager(&self) -> &TrailedStateManager {
         self.domains.state_manager()
     }
     /// Utility to reach the underlying state manager in a mutable way
-    fn sm_mut(&mut self) -> &mut T {
+    pub fn state_manager_mut(&mut self) -> &mut TrailedStateManager {
         self.domains.state_manager_mut()
     }
     /// returns the size of the propagators list
     fn prop_size(&self) -> usize {
-        self.sm().get_int(self.propagator_sz) as usize
+        self.state_manager().get_int(self.propagator_sz) as usize
     }
     /// increments the size of the propagators list
     fn inc_prop_size(&mut self) -> usize {
         let var = self.propagator_sz;
-        self.sm_mut().increment(var) as usize
+        self.state_manager_mut().increment(var) as usize
     }
     /// returns the size of the conditions vector
     fn cond_size(&self) -> usize {
-        self.sm().get_int(self.conditions_sz) as usize
+        self.state_manager().get_int(self.conditions_sz) as usize
     }
     /// increments the size of the conditions list
     fn inc_cond_size(&mut self) -> usize {
         let var = self.conditions_sz;
-        self.sm_mut().increment(var) as usize
+        self.state_manager_mut().increment(var) as usize
     }
 
     /// Schedules the execution of all the relevant propagators and clears the
@@ -471,20 +444,19 @@ impl<T: StateManager> CpModelImpl<T> {
 #[cfg(test)]
 mod test_default_model_quickcheck {
     use crate::{
-        ConstraintStore, CpModel, DefaultCpModel, DomainCondition, DomainStore, Inconsistency,
-        SaveAndRestore,
+        ConstraintStore, CpModel, DomainCondition, DomainStore, Inconsistency, SaveAndRestore,
     };
 
     #[test]
     fn it_works() {
-        let mut solver = DefaultCpModel::default();
+        let mut solver = CpModel::default();
 
         let x = solver.new_int_var(5, 10);
         let y = solver.new_bool_var();
 
-        let cx = solver.post(Box::new(move |dom: &mut dyn CpModel| dom.fix_bool(y, true)));
+        let cx = solver.post(Box::new(move |dom: &mut CpModel| dom.fix_bool(y, true)));
 
-        let cy = solver.post(Box::new(move |dom: &mut dyn CpModel| {
+        let cy = solver.post(Box::new(move |dom: &mut CpModel| {
             if dom.min(x) >= Some(7) {
                 dom.fix_bool(y, false)?;
                 dom.fix(x, 7)?;
@@ -522,11 +494,11 @@ mod test_default_model_quickcheck {
 // domainbroker responsibility of the domainstoreimpl.
 #[cfg(test)]
 mod test_default_model_domainstore {
-    use crate::{DefaultCpModel, DomainStore, Inconsistency, SaveAndRestore};
+    use crate::{CpModel, DomainStore, Inconsistency, SaveAndRestore};
 
     #[test]
     fn min_yields_the_minimum_of_domain() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -537,7 +509,7 @@ mod test_default_model_domainstore {
     }
     #[test]
     fn min_yields_the_minimum_of_domain_after_update() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -552,7 +524,7 @@ mod test_default_model_domainstore {
     }
     #[test]
     fn min_yields_none_when_domain_is_empty() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -568,7 +540,7 @@ mod test_default_model_domainstore {
 
     #[test]
     fn max_yields_the_maximum_of_domain() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -579,7 +551,7 @@ mod test_default_model_domainstore {
     }
     #[test]
     fn max_yields_the_maximum_of_domain_after_update() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -594,7 +566,7 @@ mod test_default_model_domainstore {
     }
     #[test]
     fn max_yields_none_when_domain_is_empty() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -610,7 +582,7 @@ mod test_default_model_domainstore {
 
     #[test]
     fn size_yields_the_domain_size() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -621,7 +593,7 @@ mod test_default_model_domainstore {
     }
     #[test]
     fn size_yields_the_domain_size_with_hole() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -636,7 +608,7 @@ mod test_default_model_domainstore {
     }
     #[test]
     fn size_yields_the_domain_size_change_lb() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -651,7 +623,7 @@ mod test_default_model_domainstore {
     }
     #[test]
     fn size_yields_the_domain_size_change_ub() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -667,7 +639,7 @@ mod test_default_model_domainstore {
 
     #[test]
     fn contains_returns_false_for_value_less_than_lb() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -678,7 +650,7 @@ mod test_default_model_domainstore {
     }
     #[test]
     fn contains_returns_true_for_lb() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -689,7 +661,7 @@ mod test_default_model_domainstore {
     }
     #[test]
     fn contains_returns_false_for_value_gt_than_ub() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -700,7 +672,7 @@ mod test_default_model_domainstore {
     }
     #[test]
     fn contains_returns_true_for_ub() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -711,7 +683,7 @@ mod test_default_model_domainstore {
     }
     #[test]
     fn contains_returns_false_for_hole() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -726,7 +698,7 @@ mod test_default_model_domainstore {
     }
     #[test]
     fn contains_returns_true_if_in_set() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -742,7 +714,7 @@ mod test_default_model_domainstore {
 
     #[test]
     fn fix_fails_when_lower_than_lb() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -753,7 +725,7 @@ mod test_default_model_domainstore {
     }
     #[test]
     fn fix_fails_when_higher_than_ub() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -764,7 +736,7 @@ mod test_default_model_domainstore {
     }
     #[test]
     fn fix_fails_when_hole() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -779,7 +751,7 @@ mod test_default_model_domainstore {
     }
     #[test]
     fn fix_succeeds_when_in_domain() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -791,7 +763,7 @@ mod test_default_model_domainstore {
 
     #[test]
     fn remove_has_no_effect_when_out_of_domain() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -803,7 +775,7 @@ mod test_default_model_domainstore {
 
     #[test]
     fn remove_fails_when_it_makes_domain_empty() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -822,7 +794,7 @@ mod test_default_model_domainstore {
     }
     #[test]
     fn remove_punches_a_hole_when_in_the_middle() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -834,7 +806,7 @@ mod test_default_model_domainstore {
 
     #[test]
     fn remove_may_adapt_minimum() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -854,7 +826,7 @@ mod test_default_model_domainstore {
 
     #[test]
     fn remove_may_adapt_maximum() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -874,7 +846,7 @@ mod test_default_model_domainstore {
 
     #[test]
     fn remove_above_has_no_effect_when_out_of_domain() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -886,7 +858,7 @@ mod test_default_model_domainstore {
 
     #[test]
     fn remove_above_fails_when_it_makes_domain_empty() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -898,7 +870,7 @@ mod test_default_model_domainstore {
 
     #[test]
     fn remove_above_may_adapt_maximum() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -918,7 +890,7 @@ mod test_default_model_domainstore {
 
     #[test]
     fn remove_below_has_no_effect_when_out_of_domain() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -930,7 +902,7 @@ mod test_default_model_domainstore {
 
     #[test]
     fn remove_below_fails_when_it_makes_domain_empty() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -942,7 +914,7 @@ mod test_default_model_domainstore {
 
     #[test]
     fn remove_below_may_adapt_minimum() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -962,7 +934,7 @@ mod test_default_model_domainstore {
 
     #[test]
     fn is_fixed_only_when_one_value_left() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(0, 5);
         let z = ds.new_bool_var();
@@ -986,7 +958,7 @@ mod test_default_model_domainstore {
     }
     #[test]
     fn is_true_iff_fixed_and_true() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let z = ds.new_bool_var();
 
         assert!(!ds.is_true(z));
@@ -1002,7 +974,7 @@ mod test_default_model_domainstore {
     }
     #[test]
     fn is_false_iff_fixed_and_false() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let z = ds.new_bool_var();
 
         assert!(!ds.is_false(z));
@@ -1036,7 +1008,7 @@ mod test_default_model_saveandstore {
 
     #[test]
     fn save_and_restore_state_should_work_together() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_bool_var();
 
@@ -1073,7 +1045,7 @@ mod test_default_model_saveandstore {
     */
     #[test]
     fn restore_drops_all_stale_propagators_and_conditions() {
-        let mut ds = DefaultCpModel::default();
+        let mut ds = CpModel::default();
         let x = ds.new_int_var(5, 10);
         let y = ds.new_int_var(5, 10);
         let z = ds.new_int_var(5, 10);
@@ -1086,7 +1058,7 @@ mod test_default_model_saveandstore {
         // removed, and it is fired every time the domain of variable x is
         // changed.
         let rc_flag_x = flag_x.clone();
-        let constraint_x = ds.post(Box::new(move |_: &mut dyn CpModel| {
+        let constraint_x = ds.post(Box::new(move |_: &mut CpModel| {
             *rc_flag_x.borrow_mut() = true;
             Ok(())
         }));
@@ -1114,7 +1086,7 @@ mod test_default_model_saveandstore {
         // propagator but it should make it stop reacting to changes in the
         // domain of y
         let rc_flag_y = flag_y.clone();
-        let constraint_y = ds.post(Box::new(move |_: &mut dyn CpModel| {
+        let constraint_y = ds.post(Box::new(move |_: &mut CpModel| {
             *rc_flag_y.borrow_mut() = true;
             Ok(())
         }));
@@ -1143,7 +1115,7 @@ mod test_default_model_saveandstore {
         // constraint z is created and installed at level 2. it must be deleted
         // completely upon restoration
         let rc_flag_z = flag_z.clone();
-        let constraint_z = ds.post(Box::new(move |_: &mut dyn CpModel| {
+        let constraint_z = ds.post(Box::new(move |_: &mut CpModel| {
             *rc_flag_z.borrow_mut() = true;
             Ok(())
         }));
@@ -1243,8 +1215,8 @@ mod test_default_model_saveandstore {
 
     #[test]
     fn restore_unschedules_all_scheduled_propagators() {
-        let mut model = DefaultCpModel::default();
-        let c = model.post(Box::new(move |_: &mut dyn CpModel| Err(Inconsistency)));
+        let mut model = CpModel::default();
+        let c = model.post(Box::new(move |_: &mut CpModel| Err(Inconsistency)));
         model.save_state();
         model.schedule(c);
         model.restore_state();
@@ -1253,9 +1225,9 @@ mod test_default_model_saveandstore {
 
     #[test]
     fn restore_clears_all_events() {
-        let mut model = DefaultCpModel::default();
+        let mut model = CpModel::default();
         let x = model.new_int_var(0, 10);
-        let c = model.post(Box::new(move |dom: &mut dyn CpModel| dom.fix(x, 7)));
+        let c = model.post(Box::new(move |dom: &mut CpModel| dom.fix(x, 7)));
         model.propagate_on(c, DomainCondition::DomainChanged(x));
 
         model.save_state();
@@ -1288,13 +1260,13 @@ mod test_default_model_constraintstore {
         }
     }
     impl ModelingConstruct for MockConstruct {
-        fn install(&mut self, _cstore: &mut dyn CpModel) {
+        fn install(&mut self, _cstore: &mut CpModel) {
             *self.installed.borrow_mut() = true;
         }
     }
     #[test]
     fn install_simply_delegates_to_model_construct() {
-        let mut model = DefaultCpModel::default();
+        let mut model = CpModel::default();
         let mut construct = MockConstruct::new();
 
         model.install(&mut construct);
@@ -1302,12 +1274,12 @@ mod test_default_model_constraintstore {
     }
     #[test]
     fn post_adds_a_propagator_but_does_not_attach_it() {
-        let mut model = DefaultCpModel::default();
+        let mut model = CpModel::default();
         let x = model.new_int_var(0, 9);
         assert_eq!(0, model.prop_size());
         assert_eq!(0, model.cond_size());
 
-        let _ = model.post(Box::new(move |_: &mut dyn CpModel| Err(Inconsistency)));
+        let _ = model.post(Box::new(move |_: &mut CpModel| Err(Inconsistency)));
 
         assert_eq!(1, model.prop_size());
         assert_eq!(0, model.cond_size());
@@ -1317,10 +1289,10 @@ mod test_default_model_constraintstore {
     }
     #[test]
     fn schedule_prepares_constraint_for_execution() {
-        let mut model = DefaultCpModel::default();
+        let mut model = CpModel::default();
         let x = model.new_int_var(0, 9);
 
-        let c = model.post(Box::new(move |dom: &mut dyn CpModel| dom.fix(x, 7)));
+        let c = model.post(Box::new(move |dom: &mut CpModel| dom.fix(x, 7)));
 
         // not scheduled yet, fixpoint wont change domain
         assert_eq!(Ok(()), model.fixpoint());
@@ -1338,9 +1310,9 @@ mod test_default_model_constraintstore {
 
     #[test]
     fn propagate_on_does_not_insert_duplicate() {
-        let mut model = DefaultCpModel::default();
+        let mut model = CpModel::default();
         let x = model.new_int_var(0, 9);
-        let c = model.post(Box::new(move |dom: &mut dyn CpModel| dom.fix(x, 7)));
+        let c = model.post(Box::new(move |dom: &mut CpModel| dom.fix(x, 7)));
 
         model.propagate_on(c, DomainCondition::IsFixed(x));
         assert_eq!(1, model.cond_size());
@@ -1375,10 +1347,10 @@ mod test_default_model_constraintstore {
     }
     #[test]
     fn different_constraints_listening_on_the_same_event_is_not_a_duplicate() {
-        let mut model = DefaultCpModel::default();
+        let mut model = CpModel::default();
         let x = model.new_int_var(0, 9);
-        let c = model.post(Box::new(move |dom: &mut dyn CpModel| dom.fix(x, 7)));
-        let d = model.post(Box::new(move |dom: &mut dyn CpModel| dom.fix(x, 7)));
+        let c = model.post(Box::new(move |dom: &mut CpModel| dom.fix(x, 7)));
+        let d = model.post(Box::new(move |dom: &mut CpModel| dom.fix(x, 7)));
 
         model.propagate_on(c, DomainCondition::IsFixed(x));
         model.propagate_on(d, DomainCondition::IsFixed(x));
@@ -1386,10 +1358,10 @@ mod test_default_model_constraintstore {
     }
     #[test]
     fn propagate_on_fixed_does_nothing_as_it_is_not_fixed() {
-        let mut model = DefaultCpModel::default();
+        let mut model = CpModel::default();
         let x = model.new_int_var(0, 9);
 
-        let c = model.post(Box::new(move |dom: &mut dyn CpModel| dom.fix(x, 7)));
+        let c = model.post(Box::new(move |dom: &mut CpModel| dom.fix(x, 7)));
         model.propagate_on(c, DomainCondition::IsFixed(x));
 
         // not scheduled yet, fixpoint wont change domain
@@ -1406,10 +1378,10 @@ mod test_default_model_constraintstore {
     }
     #[test]
     fn propagate_on_fixed_propagates_when_var_is_fixed() {
-        let mut model = DefaultCpModel::default();
+        let mut model = CpModel::default();
         let x = model.new_int_var(0, 9);
 
-        let c = model.post(Box::new(move |dom: &mut dyn CpModel| dom.fix(x, 7)));
+        let c = model.post(Box::new(move |dom: &mut CpModel| dom.fix(x, 7)));
         model.propagate_on(c, DomainCondition::IsFixed(x));
         assert_eq!(Ok(()), model.fix(x, 5));
         assert_eq!(Err(Inconsistency), model.fixpoint());
@@ -1417,10 +1389,10 @@ mod test_default_model_constraintstore {
 
     #[test]
     fn propagate_on_min_change_does_nothing_unless_minimum_changes() {
-        let mut model = DefaultCpModel::default();
+        let mut model = CpModel::default();
         let x = model.new_int_var(0, 9);
 
-        let c = model.post(Box::new(move |dom: &mut dyn CpModel| dom.fix(x, 7)));
+        let c = model.post(Box::new(move |dom: &mut CpModel| dom.fix(x, 7)));
         model.propagate_on(c, DomainCondition::MinimumChanged(x));
 
         // not scheduled yet, fixpoint wont change domain
@@ -1445,10 +1417,10 @@ mod test_default_model_constraintstore {
     }
     #[test]
     fn propagate_on_max_change_does_nothing_unless_maximum_changes() {
-        let mut model = DefaultCpModel::default();
+        let mut model = CpModel::default();
         let x = model.new_int_var(0, 9);
 
-        let c = model.post(Box::new(move |dom: &mut dyn CpModel| dom.fix(x, 7)));
+        let c = model.post(Box::new(move |dom: &mut CpModel| dom.fix(x, 7)));
         model.propagate_on(c, DomainCondition::MaximumChanged(x));
 
         // not scheduled yet, fixpoint wont change domain
@@ -1473,10 +1445,10 @@ mod test_default_model_constraintstore {
     }
     #[test]
     fn propagate_on_change_reacts_on_every_change() {
-        let mut model = DefaultCpModel::default();
+        let mut model = CpModel::default();
         let x = model.new_int_var(0, 9);
 
-        let c = model.post(Box::new(move |dom: &mut dyn CpModel| dom.fix(x, 7)));
+        let c = model.post(Box::new(move |dom: &mut CpModel| dom.fix(x, 7)));
         model.propagate_on(c, DomainCondition::DomainChanged(x));
 
         // not scheduled yet, fixpoint wont change domain
@@ -1495,28 +1467,26 @@ mod test_default_model_constraintstore {
 
     #[test]
     fn fixpoint_runs_propagators_until_it_reaches_fixpoint() {
-        let mut model = DefaultCpModel::default();
+        let mut model = CpModel::default();
         let x = model.new_int_var(0, 9);
         let y = model.new_int_var(0, 9);
         let z = model.new_int_var(0, 9);
 
-        let boot = model.post(Box::new(move |dom: &mut dyn CpModel| dom.remove(x, 5)));
+        let boot = model.post(Box::new(move |dom: &mut CpModel| dom.remove(x, 5)));
         model.schedule(boot);
 
-        let cx = model.post(Box::new(move |dom: &mut dyn CpModel| {
-            dom.remove_above(y, 7)
-        }));
+        let cx = model.post(Box::new(move |dom: &mut CpModel| dom.remove_above(y, 7)));
         model.propagate_on(cx, DomainCondition::DomainChanged(x));
 
-        let cy1 = model.post(Box::new(move |dom: &mut dyn CpModel| dom.fix(y, 3)));
+        let cy1 = model.post(Box::new(move |dom: &mut CpModel| dom.fix(y, 3)));
         model.propagate_on(cy1, DomainCondition::MaximumChanged(y));
 
-        let cy2 = model.post(Box::new(move |dom: &mut dyn CpModel| {
+        let cy2 = model.post(Box::new(move |dom: &mut CpModel| {
             dom.remove_below(z, dom.min(y).unwrap())
         }));
         model.propagate_on(cy2, DomainCondition::IsFixed(y));
 
-        let cz = model.post(Box::new(move |dom: &mut dyn CpModel| dom.fix(z, 3)));
+        let cz = model.post(Box::new(move |dom: &mut CpModel| dom.fix(z, 3)));
         model.propagate_on(cz, DomainCondition::MinimumChanged(z));
 
         assert_eq!(10, model.size(x));
@@ -1538,26 +1508,26 @@ mod test_default_model_constraintstore {
 
     #[test]
     fn fixpoint_stops_running_upon_inconsistency() {
-        let mut model = DefaultCpModel::default();
+        let mut model = CpModel::default();
         let x = model.new_int_var(0, 9);
         let y = model.new_int_var(0, 9);
         let z = model.new_int_var(0, 9);
 
-        let boot = model.post(Box::new(move |dom: &mut dyn CpModel| dom.remove(x, 5)));
+        let boot = model.post(Box::new(move |dom: &mut CpModel| dom.remove(x, 5)));
         model.schedule(boot);
 
-        let cx = model.post(Box::new(move |_: &mut dyn CpModel| Err(Inconsistency)));
+        let cx = model.post(Box::new(move |_: &mut CpModel| Err(Inconsistency)));
         model.propagate_on(cx, DomainCondition::DomainChanged(x));
 
-        let cy1 = model.post(Box::new(move |dom: &mut dyn CpModel| dom.fix(y, 3)));
+        let cy1 = model.post(Box::new(move |dom: &mut CpModel| dom.fix(y, 3)));
         model.propagate_on(cy1, DomainCondition::MaximumChanged(y));
 
-        let cy2 = model.post(Box::new(move |dom: &mut dyn CpModel| {
+        let cy2 = model.post(Box::new(move |dom: &mut CpModel| {
             dom.remove_below(z, dom.min(y).unwrap())
         }));
         model.propagate_on(cy2, DomainCondition::IsFixed(y));
 
-        let cz = model.post(Box::new(move |dom: &mut dyn CpModel| dom.fix(z, 3)));
+        let cz = model.post(Box::new(move |dom: &mut CpModel| dom.fix(z, 3)));
         model.propagate_on(cz, DomainCondition::MinimumChanged(z));
 
         assert_eq!(10, model.size(x));
@@ -1580,25 +1550,25 @@ mod test_default_model_constraintstore {
     /// Any closure/function that accepts a mutable ref to the cp model can be
     /// a modeling construct. (This is mere convenience, not required to get something
     /// useable)
-    impl<F: FnMut(&mut dyn CpModel)> ModelingConstruct for F {
-        fn install(&mut self, cp: &mut dyn CpModel) {
+    impl<F: FnMut(&mut CpModel)> ModelingConstruct for F {
+        fn install(&mut self, cp: &mut CpModel) {
             self(cp)
         }
     }
 
     #[test]
     fn propagator_can_post_new_constraints() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(0, 9);
         let y = cp.new_int_var(0, 9);
         let z = cp.new_int_var(0, 9);
 
-        cp.install(&mut move |cp: &mut dyn CpModel| {
-            let c1 = cp.post(Box::new(move |cp: &mut dyn CpModel| {
-                cp.install(&mut move |cp: &mut dyn CpModel| {
-                    let c2 = cp.post(Box::new(move |cp: &mut dyn CpModel| {
-                        cp.install(&mut move |cp: &mut dyn CpModel| {
-                            let c3 = cp.post(Box::new(move |cp: &mut dyn CpModel| cp.fix(z, 3)));
+        cp.install(&mut move |cp: &mut CpModel| {
+            let c1 = cp.post(Box::new(move |cp: &mut CpModel| {
+                cp.install(&mut move |cp: &mut CpModel| {
+                    let c2 = cp.post(Box::new(move |cp: &mut CpModel| {
+                        cp.install(&mut move |cp: &mut CpModel| {
+                            let c3 = cp.post(Box::new(move |cp: &mut CpModel| cp.fix(z, 3)));
                             cp.schedule(c3);
                         });
                         cp.fix(y, 4)

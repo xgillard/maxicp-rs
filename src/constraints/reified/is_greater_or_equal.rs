@@ -35,7 +35,7 @@ impl IsGreaterOrEqualConstant {
     }
 }
 impl ModelingConstruct for IsGreaterOrEqualConstant {
-    fn install(&mut self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut CpModel) {
         let me = *self;
         let prop = cp.post(Box::new(me));
 
@@ -46,7 +46,7 @@ impl ModelingConstruct for IsGreaterOrEqualConstant {
     }
 }
 impl Propagator for IsGreaterOrEqualConstant {
-    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
+    fn propagate(&mut self, cp: &mut CpModel) -> CPResult<()> {
         if cp.is_true(self.b) {
             cp.remove_below(self.x, self.v)?;
         } else if cp.is_false(self.b) {
@@ -82,7 +82,7 @@ impl IsGreaterOrEqualVar {
     }
 }
 impl ModelingConstruct for IsGreaterOrEqualVar {
-    fn install(&mut self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut CpModel) {
         let me = *self;
         let prop = cp.post(Box::new(me));
 
@@ -95,7 +95,7 @@ impl ModelingConstruct for IsGreaterOrEqualVar {
     }
 }
 impl Propagator for IsGreaterOrEqualVar {
-    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
+    fn propagate(&mut self, cp: &mut CpModel) -> CPResult<()> {
         let xmin = cp.min(self.x).unwrap();
         let xmax = cp.max(self.x).unwrap();
         let ymin = cp.min(self.y).unwrap();
@@ -126,7 +126,7 @@ mod test_isgreaterorequal_const {
     // if b is true when posted  -> ge is enforced on x
     #[test]
     fn if_b_is_true_on_install_x_ge_v_is_enforced() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(-10, 10);
         let b = cp.new_bool_var();
         let v = 3;
@@ -139,7 +139,7 @@ mod test_isgreaterorequal_const {
     // if b is false when posted -> gt is enforced on x
     #[test]
     fn if_b_is_false_on_install_x_lt_v_is_enforced() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(-10, 10);
         let b = cp.new_bool_var();
         let v = 3;
@@ -152,7 +152,7 @@ mod test_isgreaterorequal_const {
     // when b is open when posted -> it enforces nothing
     #[test]
     fn if_b_is_open_on_install_it_enforces_nothing() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(-10, 10);
         let b = cp.new_bool_var();
         let v = 3;
@@ -166,7 +166,7 @@ mod test_isgreaterorequal_const {
     // if x satisfied when posted -> it enforces b
     #[test]
     fn if_condition_satisfied_on_install_b_must_be_true() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(-10, 10);
         let b = cp.new_bool_var();
         let v = -20;
@@ -178,7 +178,7 @@ mod test_isgreaterorequal_const {
     // if x falsifies when posted -> it enforces not b
     #[test]
     fn if_condition_falsified_on_install_b_must_be_false() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(-10, 10);
         let b = cp.new_bool_var();
         let v = 20;
@@ -190,7 +190,7 @@ mod test_isgreaterorequal_const {
     // when x neither falsifies nor invalidates, then it does nothing
     #[test]
     fn if_condition_open_on_install_b_must_be_open() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(-10, 10);
         let b = cp.new_bool_var();
         let v = 0;
@@ -204,7 +204,7 @@ mod test_isgreaterorequal_const {
     // when b is fixed true -> it enforces x <= v
     #[test]
     fn if_b_is_true_on_propagate_condition_must_be_forced() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(-10, 10);
         let b = cp.new_bool_var();
         let v = 0;
@@ -226,7 +226,7 @@ mod test_isgreaterorequal_const {
     // when b is fixed false -> it enforces x > v
     #[test]
     fn if_b_is_false_on_propagate_condition_must_be_made_impossible() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(-10, 10);
         let b = cp.new_bool_var();
         let v = 0;
@@ -248,7 +248,7 @@ mod test_isgreaterorequal_const {
     // when x makes be impossible -> b is updated
     #[test]
     fn when_condition_is_impossible_on_propagate_b_must_be_changed() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(-10, 10);
         let b = cp.new_bool_var();
         let v = 0;
@@ -270,7 +270,7 @@ mod test_isgreaterorequal_const {
     // when x makes be mandatory  -> b is updated
     #[test]
     fn when_condition_is_forced_on_propagate_b_must_be_changed() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = cp.new_int_var(-10, 10);
         let b = cp.new_bool_var();
         let v = 0;
@@ -298,7 +298,7 @@ mod test_is_ge_var {
     // when b is true, ymin forces xmin (at install)
     #[test]
     fn when_b_is_true_ymin_forces_xmin_at_install() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = cp.new_int_var(-10, 10);
         let y = cp.new_int_var(0, 20);
@@ -312,7 +312,7 @@ mod test_is_ge_var {
     // when b is true, ymin forces xmin (at propag)
     #[test]
     fn when_b_is_true_ymin_forces_ymin_at_propag() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = cp.new_int_var(-10, 10);
         let y = cp.new_int_var(0, 20);
@@ -328,7 +328,7 @@ mod test_is_ge_var {
     // when b is true, xmax forces ymax (at install)
     #[test]
     fn when_b_is_true_xmax_forces_ymax_at_install() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = cp.new_int_var(-10, 10);
         let y = cp.new_int_var(-20, 20);
@@ -344,7 +344,7 @@ mod test_is_ge_var {
     // when b is true, xmax forces ymax (at propag)
     #[test]
     fn when_b_is_true_xmax_forces_ymax_at_propag() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = cp.new_int_var(-10, 10);
         let y = cp.new_int_var(-20, 20);
@@ -361,7 +361,7 @@ mod test_is_ge_var {
     // when b is false, ymin forces xmax (at install)
     #[test]
     fn when_b_is_false_ymax_forces_xmax_at_install() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = cp.new_int_var(-10, 10);
         let y = cp.new_int_var(-20, 0);
@@ -377,7 +377,7 @@ mod test_is_ge_var {
     // when b is false, ymax forces xmax (at propag)
     #[test]
     fn when_b_is_false_ymax_forces_xmax_at_propag() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = cp.new_int_var(-10, 10);
         let y = cp.new_int_var(-20, 0);
@@ -393,7 +393,7 @@ mod test_is_ge_var {
     // when b is false, xmax forces ymin (at install)
     #[test]
     fn when_b_is_false_xmax_forces_ymin_at_install() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = cp.new_int_var(-10, 10);
         let y = cp.new_int_var(-20, 20);
@@ -409,7 +409,7 @@ mod test_is_ge_var {
     // when b is false, xmax forces ymin (at propag)
     #[test]
     fn when_b_is_false_xmax_forces_ymin_at_propag() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = cp.new_int_var(-10, 10);
         let y = cp.new_int_var(-20, 20);
@@ -426,7 +426,7 @@ mod test_is_ge_var {
     // b must be true when and xmin >= ymax (install)
     #[test]
     fn b_must_be_true_when_xmin_ge_ymax_at_install() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = cp.new_int_var(-10, 10);
         let y = cp.new_int_var(-20, 20);
@@ -443,7 +443,7 @@ mod test_is_ge_var {
     // b must be true when and xmin >= ymax (propag)
     #[test]
     fn b_must_be_true_when_xmin_ge_ymax_at_propag() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = cp.new_int_var(-10, 10);
         let y = cp.new_int_var(-20, 20);
@@ -460,7 +460,7 @@ mod test_is_ge_var {
     // b must be false when and xmax < ymin (install)
     #[test]
     fn b_must_be_false_when_xmax_lt_ymin_at_install() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = cp.new_int_var(-10, 10);
         let y = cp.new_int_var(-20, 20);
@@ -477,7 +477,7 @@ mod test_is_ge_var {
     // b must be false when and xmax < ymin (propag)
     #[test]
     fn b_must_be_false_when_xmax_lt_ymin_at_propag() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = cp.new_int_var(-10, 10);
         let y = cp.new_int_var(-20, 20);

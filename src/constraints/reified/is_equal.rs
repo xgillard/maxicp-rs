@@ -35,7 +35,7 @@ impl IsEqualConstant {
     }
 }
 impl ModelingConstruct for IsEqualConstant {
-    fn install(&mut self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut CpModel) {
         let me = cp.post(Box::new(*self));
 
         cp.schedule(me);
@@ -44,7 +44,7 @@ impl ModelingConstruct for IsEqualConstant {
     }
 }
 impl Propagator for IsEqualConstant {
-    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
+    fn propagate(&mut self, cp: &mut CpModel) -> CPResult<()> {
         if cp.is_true(self.b) {
             cp.fix(self.x, self.v)
         } else if cp.is_false(self.b) {
@@ -76,7 +76,7 @@ impl IsEqualVar {
     }
 }
 impl ModelingConstruct for IsEqualVar {
-    fn install(&mut self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut CpModel) {
         let me = cp.post(Box::new(*self));
 
         cp.schedule(me);
@@ -86,7 +86,7 @@ impl ModelingConstruct for IsEqualVar {
     }
 }
 impl Propagator for IsEqualVar {
-    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
+    fn propagate(&mut self, cp: &mut CpModel) -> CPResult<()> {
         let bfixed = cp.is_fixed(self.b);
         let xfixed = cp.is_fixed(self.x);
         let yfixed = cp.is_fixed(self.y);
@@ -125,7 +125,7 @@ mod test_isequal_constant {
 
     #[test]
     fn when_b_is_true_x_gets_fixed_at_at_propag() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = cp.new_int_var(10, 20);
         let v = 15;
@@ -143,7 +143,7 @@ mod test_isequal_constant {
     }
     #[test]
     fn when_b_is_true_x_gets_fixed_at_at_install() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_int_var(1, 1);
         let x = cp.new_int_var(10, 20);
         let v = 15;
@@ -156,7 +156,7 @@ mod test_isequal_constant {
     }
     #[test]
     fn when_b_is_false_v_gets_removed_at_propag() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = cp.new_int_var(10, 20);
         let v = 15;
@@ -174,7 +174,7 @@ mod test_isequal_constant {
     }
     #[test]
     fn when_b_is_false_v_gets_removed_at_install() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_int_var(0, 0);
         let x = cp.new_int_var(10, 20);
         let v = 15;
@@ -188,7 +188,7 @@ mod test_isequal_constant {
 
     #[test]
     fn b_cant_be_true_when_x_doesnt_contain_v_at_update() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = cp.new_int_var(10, 20);
         let v = 15;
@@ -206,7 +206,7 @@ mod test_isequal_constant {
     }
     #[test]
     fn b_cant_be_true_when_x_doesnt_contain_v_at_install() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = cp.new_int_var(10, 20);
         let v = 105;
@@ -220,7 +220,7 @@ mod test_isequal_constant {
 
     #[test]
     fn b_mut_be_true_when_x_is_fixed_to_v_at_update() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = cp.new_int_var(10, 20);
         let v = 15;
@@ -238,7 +238,7 @@ mod test_isequal_constant {
     }
     #[test]
     fn b_mut_be_true_when_x_is_fixed_to_v_at_install() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = cp.new_int_var(15, 15);
         let v = 15;
@@ -258,7 +258,7 @@ mod test_isequal_var {
     /// b true + x fixed ==> y = x
     #[test]
     fn b_true_and_x_fixed_imply_x_eq_y_at_install() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = cp.new_int_var(-15, 15);
         let y = cp.new_int_var(-20, 20);
@@ -274,7 +274,7 @@ mod test_isequal_var {
     }
     #[test]
     fn b_true_and_x_fixed_imply_x_eq_y_at_propag() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = cp.new_int_var(-15, 15);
         let y = cp.new_int_var(-20, 20);
@@ -295,7 +295,7 @@ mod test_isequal_var {
     // b false + x fixed ==> y != x
     #[test]
     fn b_false_and_x_fixed_imply_x_ne_y_at_install() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = cp.new_int_var(-15, 15);
         let y = cp.new_int_var(-20, 20);
@@ -314,7 +314,7 @@ mod test_isequal_var {
     }
     #[test]
     fn b_false_and_x_fixed_imply_x_ne_y_at_propag() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = cp.new_int_var(-15, 15);
         let y = cp.new_int_var(-20, 20);
@@ -335,7 +335,7 @@ mod test_isequal_var {
     // b true + y fixed ==> y = x
     #[test]
     fn b_true_and_y_fixed_imply_x_eq_y_at_install() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = cp.new_int_var(-15, 15);
         let y = cp.new_int_var(-20, 20);
@@ -355,7 +355,7 @@ mod test_isequal_var {
     }
     #[test]
     fn b_true_and_y_fixed_imply_x_eq_y_at_propag() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = cp.new_int_var(-15, 15);
         let y = cp.new_int_var(-20, 20);
@@ -376,7 +376,7 @@ mod test_isequal_var {
     // b false + y fixed ==> y != x
     #[test]
     fn b_false_and_y_fixed_imply_x_ne_y_at_install() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = cp.new_int_var(-15, 15);
         let y = cp.new_int_var(-20, 20);
@@ -396,7 +396,7 @@ mod test_isequal_var {
     }
     #[test]
     fn b_false_and_y_fixed_imply_x_ne_y_at_propag() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = cp.new_int_var(-15, 15);
         let y = cp.new_int_var(-20, 20);
@@ -417,7 +417,7 @@ mod test_isequal_var {
     // x == y ==> b true
     #[test]
     fn x_eq_y_implies_b_at_install() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = cp.new_int_var(-15, 15);
         let y = cp.new_int_var(-20, 20);
@@ -437,7 +437,7 @@ mod test_isequal_var {
     }
     #[test]
     fn x_eq_y_implies_b_at_propag() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = cp.new_int_var(-15, 15);
         let y = cp.new_int_var(-20, 20);
@@ -458,7 +458,7 @@ mod test_isequal_var {
     // x != y ==> b false
     #[test]
     fn x_ne_y_implies_b_at_install() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = cp.new_int_var(-15, 15);
         let y = cp.new_int_var(-20, 20);
@@ -478,7 +478,7 @@ mod test_isequal_var {
     }
     #[test]
     fn x_ne_y_implies_b_at_propag() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = cp.new_int_var(-15, 15);
         let y = cp.new_int_var(-20, 20);

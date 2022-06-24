@@ -46,7 +46,7 @@ impl Or {
 }
 
 impl ModelingConstruct for Or {
-    fn install(&mut self, cp: &mut dyn CpModel) {
+    fn install(&mut self, cp: &mut CpModel) {
         match self.literals.len() {
             0 => {
                 // an empty clause is always false: by definition it is an inconsistency
@@ -84,7 +84,7 @@ impl ModelingConstruct for Or {
 
 impl Or {
     /// Always yields an inconsistency
-    fn empty_is_inconsistent(_cp: &mut dyn CpModel) -> CPResult<()> {
+    fn empty_is_inconsistent(_cp: &mut CpModel) -> CPResult<()> {
         Err(Inconsistency)
     }
 }
@@ -113,12 +113,12 @@ impl From<&Or> for Clause {
     }
 }
 impl Propagator for Rc<UnsafeCell<Clause>> {
-    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
+    fn propagate(&mut self, cp: &mut CpModel) -> CPResult<()> {
         unsafe { (*self.get()).propagate(cp) }
     }
 }
 impl Propagator for Clause {
-    fn propagate(&mut self, cp: &mut dyn CpModel) -> CPResult<()> {
+    fn propagate(&mut self, cp: &mut CpModel) -> CPResult<()> {
         let wl1 = self.satisfiable_watched_literal(cp, 0);
         if !wl1 {
             cp.fix_bool(self.literals[1], true)
@@ -144,7 +144,7 @@ impl Clause {
     /// of the old WL with that of the new and returns true. In the event where
     /// no new WL can be found, the method returns false as a means to tell the
     /// caller that some propagation must occur.
-    fn satisfiable_watched_literal(&mut self, cp: &mut dyn CpModel, wlpos: usize) -> bool {
+    fn satisfiable_watched_literal(&mut self, cp: &mut CpModel, wlpos: usize) -> bool {
         if cp.is_false(self.literals[wlpos]) {
             let other = self
                 .literals
@@ -176,7 +176,7 @@ mod tests_or {
 
     #[test]
     fn empty_clause_is_always_inconsistent() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = vec![];
 
         cp.install(&mut Or::new(x));
@@ -184,7 +184,7 @@ mod tests_or {
     }
     #[test]
     fn unit_clause_always_forces_value() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = vec![cp.new_bool_var()];
 
         cp.install(&mut Or::new(x.clone()));
@@ -194,7 +194,7 @@ mod tests_or {
 
     #[test]
     fn it_works_fine_with_duplicates() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let b = cp.new_bool_var();
         let x = vec![b, b];
 
@@ -206,7 +206,7 @@ mod tests_or {
 
     #[test]
     fn or1() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = vec![
             cp.new_bool_var(),
             cp.new_bool_var(),
@@ -229,7 +229,7 @@ mod tests_or {
     }
     #[test]
     fn or2() {
-        let mut cp = DefaultCpModel::default();
+        let mut cp = CpModel::default();
         let x = vec![
             cp.new_bool_var(),
             cp.new_bool_var(),
