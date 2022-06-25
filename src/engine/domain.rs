@@ -304,17 +304,45 @@ impl<T: StateManager> DomainStore for DomainStoreImpl<T> {
     }
 
     fn min(&self, var: Variable) -> Option<isize> {
-        let dom = self.primitive_domain(var);
-        self.state
-            .sparse_set_get_min(dom)
-            .map(|value| self.primitive_to_view_value(var, value))
+        let vt = self.variables[var.0];
+        match vt {
+            VariableType::Primitive { index:_, domain } => {
+                self.state.sparse_set_get_min(domain)
+            },
+            VariableType::NegativeView { x } => {
+                self.max(x).map(|v| -v)
+            },
+            VariableType::OffsetView { x, offset } => {
+                self.min(x).map(|v| v + offset)
+            },
+            VariableType::MultiplicationView { x, coeff } => {
+                self.min(x).map(|v| v * coeff)
+            },
+            VariableType::FlipView { x } => {
+                self.min(x).map(|v| if v == 0 { 1 } else { 0 })
+            }
+        }
     }
 
     fn max(&self, var: Variable) -> Option<isize> {
-        let dom = self.primitive_domain(var);
-        self.state
-            .sparse_set_get_max(dom)
-            .map(|value| self.primitive_to_view_value(var, value))
+        let vt = self.variables[var.0];
+        match vt {
+            VariableType::Primitive { index:_, domain } => {
+                self.state.sparse_set_get_max(domain)
+            },
+            VariableType::NegativeView { x } => {
+                self.min(x).map(|v| -v)
+            },
+            VariableType::OffsetView { x, offset } => {
+                self.max(x).map(|v| v + offset)
+            },
+            VariableType::MultiplicationView { x, coeff } => {
+                self.max(x).map(|v| v * coeff)
+            },
+            VariableType::FlipView { x } => {
+                self.max(x).map(|v| if v == 0 { 1 } else { 0 })
+            }
+        }
     }
 
     fn size(&self, var: Variable) -> usize {
@@ -390,7 +418,7 @@ impl<T: StateManager> DomainStore for DomainStoreImpl<T> {
                 self.primitive_remove_below(value, domain, index)
             }
             VariableType::OffsetView { x, offset } => self.remove_below(x, value - offset),
-            VariableType::NegativeView { x } => self.remove_below(x, -value),
+            VariableType::NegativeView { x } => self.remove_above(x, -value),
             VariableType::FlipView { x } => self.remove_below(x, if value == 0 { 1 } else { 0 }),
             VariableType::MultiplicationView { x, coeff } => {
                 let q = value / coeff;
@@ -411,7 +439,7 @@ impl<T: StateManager> DomainStore for DomainStoreImpl<T> {
                 self.primitive_remove_above(value, domain, index)
             }
             VariableType::OffsetView { x, offset } => self.remove_above(x, value - offset),
-            VariableType::NegativeView { x } => self.remove_above(x, -value),
+            VariableType::NegativeView { x } => self.remove_below(x, -value),
             VariableType::FlipView { x } => self.remove_above(x, if value == 0 { 1 } else { 0 }),
             VariableType::MultiplicationView { x, coeff } => {
                 let q = value / coeff;
@@ -552,27 +580,6 @@ impl<T: StateManager> DomainStoreImpl<T> {
             VariableType::MultiplicationView { x, coeff: _ } => self.primitive_domain(x),
             VariableType::NegativeView { x } => self.primitive_domain(x),
             VariableType::FlipView { x } => self.primitive_domain(x),
-        }
-    }
-
-    /// This method performs the view function. It converts the
-    /// given `value` from the primitive domain of var (var's source of truth
-    /// domain) into a value in the domain of the view.
-    fn primitive_to_view_value(&self, var: Variable, value: isize) -> isize {
-        let vt = self.variables[var.0];
-        match vt {
-            VariableType::Primitive { .. } => value,
-            VariableType::OffsetView { x, offset } => {
-                self.primitive_to_view_value(x, value + offset)
-            }
-            VariableType::MultiplicationView { x, coeff } => {
-                self.primitive_to_view_value(x, value * coeff)
-            }
-            VariableType::NegativeView { x } => self.primitive_to_view_value(x, -value),
-            VariableType::FlipView { x } => {
-                let newval = if value == 0 { 1 } else { 0 };
-                self.primitive_to_view_value(x, newval)
-            }
         }
     }
     /// Checks if a value is in the domain of a PRIMITIVE VAR whose dom is given
@@ -2819,7 +2826,8 @@ mod test_domainstoreimpl_domainstore_mul_view {
         let mut ds = DefaultDomainStore::default();
         let x = ds.new_int_var(5, 10); //   5   6   7   8   9  10
         let x = ds.mul(x, -2); // -20 -18 -16 -14 -12 -10
-        assert_eq!(Err(Inconsistency), ds.remove_above(x, 0)); // empty set
+        assert_eq!(Ok(()), ds.remove_above(x, 3));  // nothing removed
+        assert_eq!(Some(-10), ds.max(x));
     }
 }
 
