@@ -32,3 +32,6 @@ pub use is_maximum::*;
 pub use is_minimum::*;
 pub use is_not_equal::*;
 pub use is_or::*;
+
+mod is_sum;
+pub use is_sum::*;
