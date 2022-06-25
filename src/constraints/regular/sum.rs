@@ -121,18 +121,19 @@ impl Propagator for SumPropagator {
         let mut total_min = partial;
         let mut total_max = partial;
 
-        for i in fixed..n {
+        let from = fixed;
+        for i in from..n {
             let mut x = self.terms[i];
             x.min = cp.min(x.var).unwrap();
             x.max = cp.max(x.var).unwrap();
 
             self.terms[i] = x;
-            total_min += x.min;
-            total_max += x.max;
+            total_min = total_min.saturating_add(x.min);
+            total_max = total_max.saturating_add(x.max);
 
             if cp.is_fixed(x.var) {
                 self.terms.swap(fixed, i);
-                partial += x.min;
+                partial = partial.saturating_add(x.min);
                 fixed += 1;
             }
         }
@@ -142,13 +143,225 @@ impl Propagator for SumPropagator {
         }
         // prune domains
         for x in self.terms.iter().skip(fixed).copied() {
-            cp.remove_above(x.var, -total_min + x.min)?;
-            cp.remove_below(x.var, -total_max + x.max)?;
+            cp.remove_above(x.var, x.min.saturating_sub(total_min))?;
+            cp.remove_below(x.var, x.max.saturating_sub(total_max))?;
         }
         // finalize bookkeeping
         cp.state_manager_mut().set_int(self.n_fixed, fixed as isize);
         cp.state_manager_mut().set_int(self.partial, partial);
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test_sum {
+    use crate::prelude::*;
+
+    #[test]
+    fn sum1() {
+        let mut cp = CpModel::default();
+        let y = cp.new_int_var(-100, 100);
+        let mut x = vec![
+            cp.new_int_var(0, 5),
+            cp.new_int_var(1, 5),
+            cp.new_int_var(0, 5),
+        ];
+
+        x.push(cp.neg(y));
+        cp.install(&mut Sum::new(x));
+        cp.fixpoint().ok();
+
+        assert_eq!(Some(1), cp.min(y));
+        assert_eq!(Some(15), cp.max(y));
+    }
+
+    #[test]
+    fn sum2() {
+        let mut cp = CpModel::default();
+        let y = cp.new_int_var(0, 100);
+        let mut x = vec![
+            cp.new_int_var(-5, 5),
+            cp.new_int_var(1, 2),
+            cp.new_int_var(0, 1),
+        ];
+
+        x.push(cp.neg(y));
+        cp.install(&mut Sum::new(x.clone()));
+        cp.fixpoint().ok();
+
+        assert_eq!(Some(0-3), cp.min(x[0]));
+        assert_eq!(Some(0), cp.min(y));
+        assert_eq!(Some(8), cp.max(y));
+    }
+
+    #[test]
+    fn sum3() {
+        let mut cp = CpModel::default();
+        let y = cp.new_int_var(5, 5);
+        let mut x = vec![
+            cp.new_int_var(-5, 5),
+            cp.new_int_var(1, 2),
+            cp.new_int_var(0, 1),
+        ];
+
+        x.push(cp.neg(y));
+        cp.install(&mut Sum::new(x.clone()));
+        cp.fixpoint().ok();
+
+        cp.remove_below(x[0], 1).ok();
+        // 1-5 + 1-2 + 0-1 = 5
+        cp.fix(x[1], 1).ok();
+        // 1-5 + 1 + 0-1 = 5
+        cp.fixpoint().ok();
+
+        assert_eq!(Some(3), cp.min(x[0]));
+        assert_eq!(Some(4), cp.max(x[0]));
+        assert_eq!(Some(0), cp.min(x[2]));
+        assert_eq!(Some(1), cp.max(x[2]));   
+    }
+
+    #[test]
+    fn sum4() {
+        let mut cp = CpModel::default();
+        let x = vec![
+            cp.new_int_var(0, 5),
+            cp.new_int_var(0, 2),
+            cp.new_int_var(0, 1),
+        ];
+
+        cp.install(&mut Sum::new(x.clone()));
+        cp.fixpoint().ok();
+
+        assert_eq!(Some(0), cp.max(x[0]));
+        assert_eq!(Some(0), cp.max(x[1]));
+        assert_eq!(Some(0), cp.max(x[2]));
+    }
+    #[test]
+    fn sum5() {
+        let mut cp = CpModel::default();
+        let x = vec![
+            cp.new_int_var(-5, 0),
+            cp.new_int_var(-3, 0),
+            cp.new_int_var(-1, 0),
+        ];
+
+        cp.install(&mut Sum::new(x.clone()));
+        cp.fixpoint().ok();
+
+        assert_eq!(Some(0), cp.min(x[0]));
+        assert_eq!(Some(0), cp.min(x[1]));
+        assert_eq!(Some(0), cp.min(x[2]));
+    }
+    #[test]
+    fn sum6() {
+        let mut cp = CpModel::default();
+        let x = vec![
+            cp.new_int_var(-5, 0),
+            cp.new_int_var(-5, 0),
+            cp.new_int_var(-3, 3),
+        ];
+
+        cp.install(&mut Sum::new(x.clone()));
+        cp.fixpoint().ok();
+
+        assert_eq!(Some(-3), cp.min(x[0]));
+        assert_eq!(Some(-3), cp.min(x[1]));
+        assert_eq!(Some(0), cp.min(x[2]));
+
+        cp.remove_above(x[2], 0).ok();
+        cp.fixpoint().ok();
+
+        assert_eq!(Some(0), cp.min(x[0]));
+        assert_eq!(Some(0), cp.min(x[1]));
+        assert_eq!(Some(0), cp.min(x[2]));
+    }
+    #[test]
+    fn sum7() {
+        let mut cp = CpModel::default();
+        let x = vec![
+            cp.new_int_var(-5, 0),
+            cp.new_int_var(-5, 0),
+            cp.new_int_var(-3, 3),
+        ];
+
+        cp.install(&mut Sum::new(x.clone()));
+        cp.fixpoint().ok();
+
+        assert_eq!(Some(-3), cp.min(x[0]));
+        assert_eq!(Some(-3), cp.min(x[1]));
+        assert_eq!(Some(0), cp.min(x[2]));
+
+        cp.remove(x[2], 1).ok();
+        cp.remove(x[2], 2).ok();
+        cp.remove(x[2], 3).ok();
+        cp.remove(x[2], 4).ok();
+        cp.remove(x[2], 5).ok();
+        cp.fixpoint().ok();
+
+        assert_eq!(Some(0), cp.min(x[0]));
+        assert_eq!(Some(0), cp.min(x[1]));
+        assert_eq!(Some(0), cp.min(x[2]));
+    }
+
+    #[test]
+    fn sum9() {
+        let mut cp = CpModel::default();
+        let x = vec![
+            cp.new_int_var(-5, -5)
+        ];
+
+        cp.install(&mut Sum::new(x.clone()));
+        assert_eq!(Err(Inconsistency), cp.fixpoint());
+    }
+    #[test]
+    fn sum10() {
+        let mut cp = CpModel::default();
+        let x = vec![
+            cp.new_int_var(-10, -5)
+        ];
+
+        cp.install(&mut Sum::new(x.clone()));
+        assert_eq!(Err(Inconsistency), cp.fixpoint());
+    }
+    #[test]
+    fn sum11() {
+        let mut cp = CpModel::default();
+        let mut x = vec![
+            cp.new_int_var(-2147483645, -2147483637),
+        ];
+        let y = cp.new_int_var(-2147483645, -2147483637);
+
+        x.push(cp.neg(y));
+        cp.install(&mut Sum::new(x.clone()));
+        assert_eq!(Ok(()), cp.fixpoint());
+    }
+    #[test]
+    fn sum12() {
+        let mut cp = CpModel::default();
+        let mut x = vec![
+            cp.new_int_var(-45, -37),
+        ];
+        let y = cp.new_int_var(-45, -3);
+
+        x.push(cp.neg(y));
+        cp.install(&mut Sum::new(x.clone()));
+        assert_eq!(Ok(()), cp.fixpoint());
+    }
+
+    #[test]
+    fn it_wont_overflow() {
+        let mut cp = CpModel::default();
+        let x0 = cp.new_int_var(-463872433, -463872429);
+        let x1 = cp.new_int_var(-463872438, -463872430);
+        let x2 = cp.new_int_var(-463872432, -463872429);
+        let x3 = cp.new_int_var(-463872435, -463872429);
+        let x4 = cp.new_int_var(-463872437, -463872429);
+
+        let x4_ = cp.neg(x4);
+        let x = vec![x0, x1, x2, x3, x4_];
+        cp.install(&mut Sum::new(x.clone()));
+        cp.install(&mut LessOrEqualConstant::new(x4, 0));
+        assert_eq!(Err(Inconsistency), cp.fixpoint());
     }
 }
