@@ -13,35 +13,10 @@
 // Copyright (c)  2022 by X. Gillard
 //
 
-//! This module provides the *not reified* implementation of some useful
-//! constraints.
-
-mod must_be_true;
-pub use must_be_true::*;
-
-mod equal;
-pub use equal::*;
-
-mod not_equal;
-pub use not_equal::*;
-
-mod less_or_equal;
-pub use less_or_equal::*;
-
-mod greater_or_equal;
-pub use greater_or_equal::*;
-
-mod and;
-pub use and::*;
-
-mod or;
-pub use or::*;
-
-mod absolute;
-pub use absolute::*;
-
-mod sum;
-pub use sum::*;
+//! This module provides the implementation of the all different constraint 
+//! along with the utilities it relies on.
 
 mod alldiff;
 pub use alldiff::*;
+
+mod max_matching;
