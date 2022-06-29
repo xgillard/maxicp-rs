@@ -19,4 +19,4 @@
 mod alldiff;
 pub use alldiff::*;
 
-mod max_matching;
+mod varvalue_bipartite_graph;

@@ -16,7 +16,7 @@
 
 //! This module provides the implementation of an incremental maximum matching
 //! algorithm which is useful when implementing the domain consistent propagator
-//! for the all different
+//! for the all different constraint. 
 
 use crate::prelude::*;
 
@@ -67,6 +67,11 @@ struct VarNode {
 /// This is the identifier of a fat value (position in a vector). This is 
 /// essentially useful to decouple a the value identifier (position in the max 
 /// matching bipartite graph) and the value itself.
+///
+/// The varnode ids are zero indexed, however, the values do not necessarily
+/// start at zero. There is however a direct mapping between the valnodeid
+/// and the value: `value + owner.min == valnodeid` (this might change in the
+/// future...it is unlikely though)
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 struct ValNodeId(usize);
 
@@ -85,29 +90,43 @@ struct ValNode {
     variable: Option<VarNodeId>,
 }
 
-
+/// This structure represents the matching (assoc. of a variable w/ a value).
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Matching {
-    variable: Variable,
-    value: isize,
+    /// The variable associated with 'value' in the computed matching in 
+    /// the computed matching..
+    pub variable: Variable,
+    /// The value associated with 'variable' in the computed matching in 
+    /// the computed matching..
+    pub value: isize,
 }
 
-pub struct MaximumMatching {
+/// This structure is used to compute (repeatedly, and incrementally) a maximum
+/// matching in the bipartite node-value graph as is required per the Regin
+/// algorithm. The algorithm in itself proceeds by a double dfs to identify
+/// the alternating and augmenting path of this bipartite graph.
+pub struct VarValueBipartiteGraph {
+    /// The 'timestamp' of the max. matching. This is a kind of passive lock
+    /// token which is used to detect if an information has become stale or not
+    /// (same mechanism as in the version control of reversible ints).
     timestamp: Timestamp,
-    //
+    /// These are the variable nodes of the bipartite graph.
     variables: Vec<VarNode>,
+    /// These are the value nodes of the bipartite graph.
     values: Vec<ValNode>,
-    //
+    /// The value of the lowest value in the domain of any variable in the 
+    /// bipartite graph
     min: isize,
-    max: isize,
-    //
-    nb_values: usize,
+    /// The size of the current matching that has been computed
     size_matching: usize,
-    //
+    /// The actual matching between variables and values
     _matching: Vec<Matching>,
 }
 
-impl MaximumMatching {
+impl VarValueBipartiteGraph {
+    /// This creates a variable-values bipartite graph that can be used to 
+    /// compute a maximum matching that can be used in the context of the 
+    /// filtering of an all different constraint.
     pub fn new(cp: &CpModel, xs: &[Variable]) -> Self {
         let timestamp = Timestamp::default();
 
@@ -136,16 +155,12 @@ impl MaximumMatching {
             });
         }
 
-        let nb_values = values.len();
         let mut me = Self {
             timestamp,
             variables,
             values,
             //
             min,
-            max,
-            //
-            nb_values,
             size_matching: 0,
             //
             _matching: vec![],
@@ -155,7 +170,12 @@ impl MaximumMatching {
         me
     }
 
-    pub fn  compute(&mut self, cp: &CpModel) -> &[Matching] {
+    /// This function computes a maximum matching in the bipartite variable 
+    /// value graph if the domains of the variables have been updated in a way
+    /// that invalidates the previously computed maximum matching. When the 
+    /// maximum matching computed this way does not cover all variables, then 
+    /// there is no possible way of satisfying the constraint.
+    pub fn  compute_maximum_matching(&mut self, cp: &CpModel) -> &[Matching] {
         for var in self.variables.iter_mut() {
             if let Some(val_id) = var.value {
                 let value = self.values[val_id.0];
@@ -179,14 +199,17 @@ impl MaximumMatching {
         }
         &self._matching
     }
-
+    /// This function computes a greedy initial matching between variables and
+    /// values. This matching is the one that will be re optimized when a new
+    /// maximum matching is required.
     fn find_initial_matching(&mut self, cp: &CpModel) {
         self.size_matching = 0;
         for varnode in self.variables.iter_mut() {
             let vmin = cp.min(varnode.var).unwrap();
             let vmax = cp.max(varnode.var).unwrap();
 
-            for valnode in self.values.iter_mut().filter(|v| v.value >= vmin && v.value <= vmax) {
+            for value in vmin..=vmax {
+                let valnode = &mut self.values[(value-self.min) as usize];
                 if valnode.variable.is_none() {
                     if cp.contains(varnode.var, valnode.value) {
                         varnode.value = Some(valnode.id);
@@ -198,7 +221,9 @@ impl MaximumMatching {
             }
         }
     }
-
+    /// This method computes a maximum matching in the bipartite variable
+    /// values graphs by extending and adapting an existing matching with
+    /// alternating (augmenting) paths.
     fn find_maximal_matching(&mut self, cp: &CpModel) {
         let n = self.variables.len();
         if self.size_matching < n {
@@ -213,7 +238,8 @@ impl MaximumMatching {
             }
         }
     }
-
+    /// Returns true iff a new alternating path can be found starting from 
+    /// the given variable node.
     fn find_alternating_path_from_var(&mut self, cp: &CpModel, var_id: VarNodeId) -> bool {
         let varnode  = self.variables[var_id.0];
         if varnode.seen != self.timestamp {
@@ -237,7 +263,8 @@ impl MaximumMatching {
         }
         false
     }
-
+    /// Returns true iff a new alternating path can be found starting from 
+    /// the given value node.
     fn find_alternating_path_from_val(&mut self, cp: &CpModel, val_id: ValNodeId) -> bool {
         let valnode = &mut self.values[val_id.0];
         if valnode.seen != self.timestamp {
@@ -252,13 +279,14 @@ impl MaximumMatching {
         }
         false
     }
+
 }
 
 #[cfg(test)]
 mod test_maxmatching {
     use crate::prelude::*;
 
-    use super::{Matching, MaximumMatching};
+    use super::{Matching, VarValueBipartiteGraph};
 
     #[test]
     fn test1() {
@@ -268,19 +296,19 @@ mod test_maxmatching {
             ivar(&mut cp, &[1, 2]),
             ivar(&mut cp, &[1, 2, 3, 4]),
         ];
-        let mut maxmatch = MaximumMatching::new(&cp, &vars);
-        let mut matching = maxmatch.compute(&cp);
+        let mut maxmatch = VarValueBipartiteGraph::new(&cp, &vars);
+        let mut matching = maxmatch.compute_maximum_matching(&cp);
 
         check(&cp, matching, 3);
         cp.remove(vars[2], 3).ok();
         cp.fixpoint().ok();
 
-        matching = maxmatch.compute(&cp);
+        matching = maxmatch.compute_maximum_matching(&cp);
         check(&cp, matching, 3);
         
         cp.remove(vars[2], 4).ok();
         cp.fixpoint().ok();
-        matching = maxmatch.compute(&cp);
+        matching = maxmatch.compute_maximum_matching(&cp);
         check(&cp, matching, 2);
     }
 
@@ -295,20 +323,20 @@ mod test_maxmatching {
             ivar(&mut cp, &[1, 4, 5, 8, 9]),
             ivar(&mut cp, &[1, 4, 5]),
         ];
-        let mut maxmatch = MaximumMatching::new(&cp, &vars);
-        let mut matching = maxmatch.compute(&cp);
+        let mut maxmatch = VarValueBipartiteGraph::new(&cp, &vars);
+        let mut matching = maxmatch.compute_maximum_matching(&cp);
 
         check(&cp, matching, 6);
         cp.remove(vars[5], 5).ok();
         cp.fixpoint().ok();
 
-        matching = maxmatch.compute(&cp);
+        matching = maxmatch.compute_maximum_matching(&cp);
         check(&cp, matching, 6);
         
         cp.remove(vars[0], 5).ok();
         cp.remove(vars[3], 5).ok();
         cp.fixpoint().ok();
-        matching = maxmatch.compute(&cp);
+        matching = maxmatch.compute_maximum_matching(&cp);
         check(&cp, matching, 5);
     }
 
