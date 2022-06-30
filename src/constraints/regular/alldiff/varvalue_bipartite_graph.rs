@@ -17,6 +17,7 @@
 //! This module provides the implementation of an incremental maximum matching
 //! algorithm which is useful when implementing the domain consistent propagator
 //! for the all different constraint. 
+use std::cell::UnsafeCell;
 
 use crate::prelude::*;
 
@@ -51,7 +52,7 @@ struct VarNodeId(usize);
 
 /// This structure represents a cp variable along with the additional metadata
 /// it uses when computing a maximum matching
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Debug)]
 struct VarNode {
     /// The identifier of the variable
     id: VarNodeId,
@@ -62,6 +63,12 @@ struct VarNode {
     /// If there is a match associated with this variable, what is it ?
     /// (we'll work with value id rather than the value itself)
     value: Option<ValNodeId>,
+    // --- SCC RELATED STUFFS -------------------------------------------------
+    /// Inbound nodes
+    inbound: Vec<NodeId>,
+    /// Outbound nodes
+    outbound: Vec<NodeId>,
+    status: VisitStatus,
 }
 
 /// This is the identifier of a fat value (position in a vector). This is 
@@ -77,7 +84,7 @@ struct ValNodeId(usize);
 
 /// This structure represents a cp variable along with the additional metadata
 /// it uses when computing a maximum matching
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Debug)]
 struct ValNode {
     /// the value identifier
     id: ValNodeId,
@@ -88,6 +95,29 @@ struct ValNode {
     /// If there is a match associated with this variable, what is it ?
     /// (we'll work with value id rather than the value itself)
     variable: Option<VarNodeId>,
+    // --- SCC RELATED STUFFS -------------------------------------------------
+    /// Inbound nodes
+    inbound: Vec<NodeId>,
+    /// Outbound nodes
+    outbound: Vec<NodeId>,
+    status: VisitStatus,
+}
+
+/// The sink is only used in the scope of the scc computation 
+#[derive(Debug)]
+struct Sink {
+    /// Inbound nodes
+    inbound: Vec<NodeId>,
+    /// Outbound nodes
+    outbound: Vec<NodeId>,
+    /// The visit status of the sink
+    status: VisitStatus,
+}
+impl Sink {
+    /// Creates a new sink
+    fn new() -> Self {
+        Self { inbound: vec![], outbound: vec![], status: VisitStatus::NotVisited }
+    }
 }
 
 /// This structure represents the matching (assoc. of a variable w/ a value).
@@ -105,7 +135,11 @@ pub struct Matching {
 /// matching in the bipartite node-value graph as is required per the Regin
 /// algorithm. The algorithm in itself proceeds by a double dfs to identify
 /// the alternating and augmenting path of this bipartite graph.
-pub struct VarValueBipartiteGraph {
+/// 
+/// The structure also contains whatever it takes to compute SSCs in the 
+/// transformed var value graph which allows to provide an efficient domain 
+/// consistent filter for the all different constraint.
+pub struct VarValueGraph {
     /// The 'timestamp' of the max. matching. This is a kind of passive lock
     /// token which is used to detect if an information has become stale or not
     /// (same mechanism as in the version control of reversible ints).
@@ -121,14 +155,25 @@ pub struct VarValueBipartiteGraph {
     size_matching: usize,
     /// The actual matching between variables and values
     _matching: Vec<Matching>,
+    // --- SCC RELATED STUFFS -------------------------------------------------
+    /// Sink (dummy node of the transformed graph)
+    _sink: Sink,
+    /// The dfs stack which is used when computing the scc in this var value
+    /// graph (this field is not stricly required, but is avoids to repeatedly 
+    /// allocate the same vector)
+    _stack: UnsafeCell<Vec<NodeId>>,
+    /// The suffix order stack which is used when computing the scc in this var 
+    /// value graph (this field is not stricly required, but is avoids to 
+    /// repeatedly allocate the same vector)
+    _suffix_order: Vec<NodeId>
 }
 
-impl VarValueBipartiteGraph {
+impl VarValueGraph {
     /// This creates a variable-values bipartite graph that can be used to 
     /// compute a maximum matching that can be used in the context of the 
     /// filtering of an all different constraint.
     pub fn new(cp: &CpModel, xs: &[Variable]) -> Self {
-        let timestamp = Timestamp::default();
+        let timestamp = Timestamp::new();
 
         let mut min = isize::MAX;
         let mut max = isize::MIN;
@@ -142,6 +187,10 @@ impl VarValueBipartiteGraph {
                 var,
                 seen: timestamp,
                 value: None,
+                //
+                inbound: vec![],
+                outbound: vec![],
+                status: VisitStatus::NotVisited,
             });
         }
 
@@ -152,6 +201,10 @@ impl VarValueBipartiteGraph {
                 value, 
                 seen: timestamp,
                 variable: None,
+                //
+                inbound: vec![],
+                outbound: vec![],
+                status: VisitStatus::NotVisited,
             });
         }
 
@@ -164,22 +217,57 @@ impl VarValueBipartiteGraph {
             size_matching: 0,
             //
             _matching: vec![],
+            //
+            _sink: Sink::new(),
+            _stack: UnsafeCell::new(vec![]),
+            _suffix_order: vec![],
         };
 
         me.find_initial_matching(cp);
         me
     }
+}
 
+impl Propagator for VarValueGraph {
+    fn propagate(&mut self, cp: &mut CpModel) -> CPResult<()> {
+        let matching = self.compute_maximum_matching(cp);
+        if matching.len() < self.variables.len() {
+            Err(Inconsistency)
+        } else {
+            self.prepare_transformed_graph(cp);
+            self.kosaraju_scc();
+
+            for var_node in self.variables.iter() {
+                let vmin = cp.min(var_node.var).unwrap();
+                let vmax = cp.max(var_node.var).unwrap();
+                let skip = (vmin - self.min) as usize;
+                let take = (vmax - vmin) as usize;
+
+                for val_node in self.values.iter().skip(skip).take(take) {
+                    if var_node.value != Some(val_node.id) && var_node.status != val_node.status {
+                        cp.remove(var_node.var, val_node.value)?;
+                    }
+                }
+            }
+            Ok(())
+        }
+    }
+}
+
+// ********************************************************************** //
+// ****** MAXIMUM MATCHING ********************************************** //
+// ********************************************************************** //
+impl VarValueGraph {
     /// This function computes a maximum matching in the bipartite variable 
     /// value graph if the domains of the variables have been updated in a way
     /// that invalidates the previously computed maximum matching. When the 
     /// maximum matching computed this way does not cover all variables, then 
     /// there is no possible way of satisfying the constraint.
-    pub fn  compute_maximum_matching(&mut self, cp: &CpModel) -> &[Matching] {
+    pub fn compute_maximum_matching(&mut self, cp: &CpModel) -> &[Matching] {
         for var in self.variables.iter_mut() {
             if let Some(val_id) = var.value {
-                let value = self.values[val_id.0];
-                if !cp.contains(var.var, value.value) {
+                let value = self.values[val_id.0].value;
+                if !cp.contains(var.var, value) {
                     self.values[val_id.0].variable = None;
                     var.value = None;
                     self.size_matching -= 1;
@@ -188,6 +276,7 @@ impl VarValueBipartiteGraph {
         }
 
         self.find_maximal_matching(cp);
+
         self._matching.clear();
         for v in self.variables.iter() {
             if let Some(value) = v.value {
@@ -228,10 +317,12 @@ impl VarValueBipartiteGraph {
         let n = self.variables.len();
         if self.size_matching < n {
             for k in 0..n {
-                let x = self.variables[k];
-                if x.value.is_none() {
+                let x = &self.variables[k];
+                let xval = x.value;
+                let xid = x.id;
+                if xval.is_none() {
                     self.timestamp = self.timestamp.inc();
-                    if self.find_alternating_path_from_var(cp, x.id) {
+                    if self.find_alternating_path_from_var(cp, xid) {
                         self.size_matching += 1;
                     }
                 }
@@ -241,17 +332,20 @@ impl VarValueBipartiteGraph {
     /// Returns true iff a new alternating path can be found starting from 
     /// the given variable node.
     fn find_alternating_path_from_var(&mut self, cp: &CpModel, var_id: VarNodeId) -> bool {
-        let varnode  = self.variables[var_id.0];
-        if varnode.seen != self.timestamp {
+        let varnode  = &self.variables[var_id.0];
+        let varseen = varnode.seen;
+        let varvar = varnode.var;
+        let varval = varnode.value;
+        if varseen != self.timestamp {
             self.variables[var_id.0].seen = self.timestamp;
             
-            let xmin = cp.min(varnode.var).unwrap();
-            let xmax = cp.max(varnode.var).unwrap();
+            let xmin = cp.min(varvar).unwrap();
+            let xmax = cp.max(varvar).unwrap();
 
             for value in xmin..=xmax {
                 let val_id = ValNodeId((value - self.min) as usize);
-                if varnode.value != Some(val_id) {
-                    if cp.contains(varnode.var, value) {
+                if varval != Some(val_id) {
+                    if cp.contains(varvar, value) {
                         if self.find_alternating_path_from_val(cp, val_id) {
                             self.variables[var_id.0].value = Some(val_id);
                             self.values[val_id.0].variable = Some(var_id);
@@ -279,14 +373,213 @@ impl VarValueBipartiteGraph {
         }
         false
     }
+}
 
+
+// ********************************************************************** //
+// ****** SCC *********************************************************** //
+// ********************************************************************** //
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+enum VisitStatus {
+    NotVisited,
+    Visited,
+    /// node-id is the root of the dfs exploration that closed this node
+    Closed(NodeId),
+}
+
+/// Polymorphic node identifier
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+enum NodeId {
+    VarNode(VarNodeId),
+    ValNode(ValNodeId),
+    Sink,
+}
+
+impl VarValueGraph {
+    /// prepares the transformed var value graph where there is:
+    /// 
+    /// * one outgoing arc from each variable node to each value node in its 
+    ///   domain ++except for the value to which the variable is matched++
+    /// 
+    /// * one inbound arc to each varible node from its matched value
+    /// 
+    /// * the values not participating in the maximum matching have an outgoing
+    ///   arc towards the sink
+    /// 
+    /// * the values participating in the maximum matching have an incoming arc
+    ///   from the graph sink
+    fn prepare_transformed_graph(&mut self, cp: &CpModel) {
+        self.clear_adjacency_lists();
+
+        // builds the connections between the variable and value nodes
+        for var in self.variables.iter_mut() {
+            for value in cp.iter(var.var) {
+                let val_pos = (value - self.min) as usize;
+                let val_id = ValNodeId(val_pos);
+
+                if Some(val_id) == var.value {
+                    var.inbound.push(NodeId::ValNode(val_id));
+                    self.values[val_pos].outbound.push(NodeId::VarNode(var.id));
+                } else {
+                    var.outbound.push(NodeId::ValNode(val_id));
+                    self.values[val_pos].inbound.push(NodeId::VarNode(var.id));
+                }
+            }
+        }
+
+        // builds the connections between the value nodes and the sink
+        for val in self.values.iter_mut() {
+            // it belongs to the maximum matching
+            if val.variable.is_some() {
+                val.inbound.push(NodeId::Sink);
+                self._sink.outbound.push(NodeId::ValNode(val.id));
+            } else {
+                val.outbound.push(NodeId::Sink);
+                self._sink.inbound.push(NodeId::ValNode(val.id));
+            }
+        }
+    }
+
+    /// This function executes kosaraju's algorithm to find
+    /// components in the transformed variable value graph.
+    fn kosaraju_scc(&mut self) {
+        let nb_var = self.variables.len();
+        let nb_val = self.values.len();
+
+        // clear visit statuses
+        self.clear_visit_status();
+        // perform a dfs1 traversal of all nodes
+        for var in 0..nb_var {
+            self.dfs1(NodeId::VarNode(VarNodeId(var)));
+        }
+        for val in 0..nb_val {
+            self.dfs1(NodeId::ValNode(ValNodeId(val)));
+        }
+        self.dfs1(NodeId::Sink);
+
+        // clear visit statuses
+        self.clear_visit_status();
+
+        // the suffix order is now ready, we can peform a dfs2 traversal 
+        // (in the transposed graph) in the reverse suffix order to identify 
+        // all SCCs
+        while let Some(id) = self._suffix_order.pop() {
+            self.dfs2(id);
+        }
+    }
+
+    /// clears the visit status of all nodes in the var value graph
+    fn clear_visit_status(&mut self) {
+        self.variables.iter_mut().for_each(|v| v.status = VisitStatus::NotVisited);
+        self.values.iter_mut().for_each(|v| v.status = VisitStatus::NotVisited);
+        self._sink.status = VisitStatus::NotVisited;
+    }
+    /// clears the adjacency lists of all nodes int the var value graph
+    fn clear_adjacency_lists(&mut self) {
+        self.variables.iter_mut().for_each(|v| {
+            v.inbound.clear();
+            v.outbound.clear();
+        });
+        self.values.iter_mut().for_each(|v| {
+            v.inbound.clear();
+            v.outbound.clear();
+        });
+        self._sink.inbound.clear();
+        self._sink.outbound.clear();
+    }
+
+    fn inbound(&self, id: NodeId) -> &[NodeId] {
+        match id {
+            NodeId::VarNode(id) => &self.variables[id.0].inbound,
+            NodeId::ValNode(id) => &self.values[id.0].inbound,
+            NodeId::Sink => &self._sink.inbound,
+        }
+    }
+    fn outbound(&self, id: NodeId) -> &[NodeId] {
+        match id {
+            NodeId::VarNode(id) => &self.variables[id.0].outbound,
+            NodeId::ValNode(id) => &self.values[id.0].outbound,
+            NodeId::Sink => &self._sink.outbound,
+        }
+    }
+
+    fn get_status(&self, id: NodeId) -> VisitStatus {
+        match id {
+            NodeId::VarNode(id) => self.variables[id.0].status,
+            NodeId::ValNode(id) => self.values[id.0].status,
+            NodeId::Sink => self._sink.status,
+        }
+    }
+    fn set_status(&mut self, id: NodeId, status: VisitStatus) {
+        match id {
+            NodeId::VarNode(id) => self.variables[id.0].status = status,
+            NodeId::ValNode(id) => self.values[id.0].status = status,
+            NodeId::Sink => self._sink.status = status,
+        }
+    }
+
+    fn dfs1(&mut self, root_id: NodeId) {
+        if self.get_status(root_id) == VisitStatus::NotVisited {
+            self._stack.get_mut().push(root_id);
+        }
+
+        while !self._stack.get_mut().is_empty() {
+            let current = self._stack.get_mut().pop().unwrap();
+            let status = self.get_status(current);
+            match status {
+                VisitStatus::NotVisited => {
+                    self._stack.get_mut().push(current); // leave it on the stack for now
+                    self.set_status(current, VisitStatus::Visited);
+                    for adj in self.outbound(current) {
+                        let adj = *adj;
+                        if self.get_status(adj) == VisitStatus::NotVisited {
+                            unsafe { 
+                                (*self._stack.get()).push(adj) 
+                            };
+                        }
+                    }
+                },
+                VisitStatus::Visited => {
+                    self._suffix_order.push(current);
+                    self.set_status(current, VisitStatus::Closed(root_id));
+                },
+                VisitStatus::Closed(_) => {/* do nothing, that's ok */}
+            }
+        }
+    }
+    fn dfs2(&mut self, root_id: NodeId) {
+        if self.get_status(root_id) == VisitStatus::NotVisited {
+            self._stack.get_mut().push(root_id);
+        }
+        while !self._stack.get_mut().is_empty() {
+            let current = self._stack.get_mut().pop().unwrap();
+            let status = self.get_status(current);
+            match status {
+                VisitStatus::NotVisited => {
+                    self._stack.get_mut().push(current); // leave it on the stack for now
+                    self.set_status(current, VisitStatus::Visited);
+                    for adj in self.inbound(current) {
+                        let adj = *adj;
+                        if self.get_status(adj) == VisitStatus::NotVisited {
+                            unsafe { (*self._stack.get()).push(adj) };
+                        }
+                    }
+                },
+                VisitStatus::Visited => {
+                    self.set_status(current, VisitStatus::Closed(root_id));
+                },
+                VisitStatus::Closed(_) => {/* do nothing, that's ok */}
+            }
+        }
+    }
 }
 
 #[cfg(test)]
 mod test_maxmatching {
     use crate::prelude::*;
 
-    use super::{Matching, VarValueBipartiteGraph};
+    use super::{Matching, VarValueGraph};
 
     #[test]
     fn test1() {
@@ -296,7 +589,7 @@ mod test_maxmatching {
             ivar(&mut cp, &[1, 2]),
             ivar(&mut cp, &[1, 2, 3, 4]),
         ];
-        let mut maxmatch = VarValueBipartiteGraph::new(&cp, &vars);
+        let mut maxmatch = VarValueGraph::new(&cp, &vars);
         let mut matching = maxmatch.compute_maximum_matching(&cp);
 
         check(&cp, matching, 3);
@@ -323,7 +616,7 @@ mod test_maxmatching {
             ivar(&mut cp, &[1, 4, 5, 8, 9]),
             ivar(&mut cp, &[1, 4, 5]),
         ];
-        let mut maxmatch = VarValueBipartiteGraph::new(&cp, &vars);
+        let mut maxmatch = VarValueGraph::new(&cp, &vars);
         let mut matching = maxmatch.compute_maximum_matching(&cp);
 
         check(&cp, matching, 6);
