@@ -18,4 +18,3 @@ authors          = ["Xavier Gillard <xavier.gillard@uclouvain.be>"]
 [dependencies]
 rustc-hash       = "1.1.0"    # cp doesn't need a crypto-safe hash algo, this one is faster
 thiserror        = "1.0.31"   # error handling
-petgraph         = "0.6.2"
