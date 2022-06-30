@@ -20,7 +20,7 @@
 
 use crate::prelude::*;
 
-use super::varvalue_bipartite_graph::VarValueGraph;
+use super::propagator::VarValueGraph;
 
 /// This constraint enforces that the the value affected to each variable be 
 /// different from the one affected to all other variables. 
@@ -170,7 +170,7 @@ mod test_alldiff_dc {
             if Some(i) == k {
                 k = v.next();
             } else {
-                cp.remove(var, i);
+                cp.remove(var, i).ok();
             }
         }
         var

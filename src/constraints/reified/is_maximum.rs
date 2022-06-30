@@ -270,7 +270,7 @@ mod test_ismaximum {
             cp.new_int_var(20, 20),
         ];
 
-        cp.install(&mut IsMaximum::new(y, xs.clone()));
+        cp.install(&mut IsMaximum::new(y, xs));
         cp.fixpoint().ok();
 
         assert!(cp.is_fixed(y));

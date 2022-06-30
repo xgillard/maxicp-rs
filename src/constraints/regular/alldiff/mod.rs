@@ -16,7 +16,7 @@
 //! This module provides the implementation of the all different constraint 
 //! along with the utilities it relies on.
 
-mod alldiff;
-pub use alldiff::*;
+mod modeling;
+pub use modeling::*;
 
-mod varvalue_bipartite_graph;
+mod propagator;

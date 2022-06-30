@@ -299,13 +299,11 @@ impl VarValueGraph {
 
             for value in vmin..=vmax {
                 let valnode = &mut self.values[(value-self.min) as usize];
-                if valnode.variable.is_none() {
-                    if cp.contains(varnode.var, valnode.value) {
-                        varnode.value = Some(valnode.id);
-                        valnode.variable = Some(varnode.id);
-                        self.size_matching += 1;
-                        break;
-                    }
+                if valnode.variable.is_none() &&  cp.contains(varnode.var, valnode.value) {
+                    varnode.value = Some(valnode.id);
+                    valnode.variable = Some(varnode.id);
+                    self.size_matching += 1;
+                    break;
                 }
             }
         }
@@ -344,14 +342,10 @@ impl VarValueGraph {
 
             for value in xmin..=xmax {
                 let val_id = ValNodeId((value - self.min) as usize);
-                if varval != Some(val_id) {
-                    if cp.contains(varvar, value) {
-                        if self.find_alternating_path_from_val(cp, val_id) {
-                            self.variables[var_id.0].value = Some(val_id);
-                            self.values[val_id.0].variable = Some(var_id);
-                            return true;
-                        }
-                    } 
+                if varval != Some(val_id) && cp.contains(varvar, value) && self.find_alternating_path_from_val(cp, val_id) {
+                    self.variables[var_id.0].value = Some(val_id);
+                    self.values[val_id.0].variable = Some(var_id);
+                    return true;
                 }
             }
         }
@@ -644,7 +638,7 @@ mod test_maxmatching {
             if Some(i) == k {
                 k = v.next();
             } else {
-                cp.remove(var, i);
+                cp.remove(var, i).ok();
             }
         }
         var

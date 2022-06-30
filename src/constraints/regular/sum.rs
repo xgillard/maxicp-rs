@@ -311,7 +311,7 @@ mod test_sum {
             cp.new_int_var(-5, -5)
         ];
 
-        cp.install(&mut Sum::new(x.clone()));
+        cp.install(&mut Sum::new(x));
         assert_eq!(Err(Inconsistency), cp.fixpoint());
     }
     #[test]
@@ -321,7 +321,7 @@ mod test_sum {
             cp.new_int_var(-10, -5)
         ];
 
-        cp.install(&mut Sum::new(x.clone()));
+        cp.install(&mut Sum::new(x));
         assert_eq!(Err(Inconsistency), cp.fixpoint());
     }
     #[test]
@@ -360,7 +360,7 @@ mod test_sum {
 
         let x4_ = cp.neg(x4);
         let x = vec![x0, x1, x2, x3, x4_];
-        cp.install(&mut Sum::new(x.clone()));
+        cp.install(&mut Sum::new(x));
         cp.install(&mut LessOrEqualConstant::new(x4, 0));
         assert_eq!(Err(Inconsistency), cp.fixpoint());
     }
