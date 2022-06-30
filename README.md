@@ -55,7 +55,7 @@ and maxicp (<https://github.com/pschaus/maxicp/>).
     * [X] is minimum :: y = minimum(a, b, c, d, ...)
     * [X] sum :: sum(a, b, c, d, ...) == 0
     * [X] is sum :: y = sum(a, b, c, d, ...)
-    * [ ] All diff
+    * [X] All diff
     * [ ] circuit
     * [ ] cumulative
     * [ ] disjunctive
