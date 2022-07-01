@@ -629,9 +629,11 @@ impl VarValueGraph {
                     for adj in self.outbound(current) {
                         let adj = *adj;
                         if self.get_status(adj) == VisitStatus::NotVisited {
-                            unsafe { 
-                                (*self._stack.get()).push(adj) 
-                            };
+                            // SAFETY:
+                            // This is okay, the other self borrow actually only
+                            // ever borrow one node. The stack is not impacted
+                            // by these borrows.
+                            unsafe { (*self._stack.get()).push(adj) };
                         }
                     }
                 },
@@ -660,6 +662,10 @@ impl VarValueGraph {
                     for adj in self.inbound(current) {
                         let adj = *adj;
                         if self.get_status(adj) == VisitStatus::NotVisited {
+                            // SAFETY:
+                            // This is okay, the other self borrow actually only
+                            // ever borrow one node. The stack is not impacted
+                            // by these borrows. 
                             unsafe { (*self._stack.get()).push(adj) };
                         }
                     }
