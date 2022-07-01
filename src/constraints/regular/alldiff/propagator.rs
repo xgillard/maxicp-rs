@@ -17,6 +17,40 @@
 //! This module provides the implementation of an incremental maximum matching
 //! algorithm which is useful when implementing the domain consistent propagator
 //! for the all different constraint. 
+//! 
+//! The details of the algorithm used to implement the DC filtering implemented
+//! by the `VarValueGraph` propagator are given in "A filtering algorithm for 
+//! constraints of difference in CSPs" J-C. Régin, AAAI-94.
+//! 
+//! Essentially, the algorithm operates in two phases: 
+//! 
+//! 1. A quick feasibility check is performed. That one states that for a 
+//!    solution to exist for all different, one must be able to find a maximum
+//!    matching between variables and their domain values in the var value 
+//!    bi-partite graph. In the event where no maximum matching exists that 
+//!    covers all variables, the all different constraint simply cant be satisfied.
+//! 
+//! 2. When it is known that the constraint is satisfiable, a filtering check
+//!    is carried out which can prune away the values having no support from
+//!    variable domains. That filtering uses Berge's theorem which states that
+//!    an edge belongs to **some** but not all maximum matching iff, for an
+//!    arbitrary matching M, it belongs to either an even length alternating 
+//!    path that starts at an  M-free vertex (case 1), or an even length 
+//!    alternating cycle (case 2).
+//!    In 1994, Regin proposed to treat both cases efficiently trough a simple
+//!    graph transformation where:
+//!      
+//!       - Variables have an inbound edge from their matched value in M and an 
+//!         outbound edge towards the other. 
+//!       
+//!       - Value nodes have an inbound edge from the sink if they belong to M
+//!         and an outbound edhe towards the sink if they dont.
+//!       
+//!    Thanks to this transformation, both case reduce to the following statement.
+//!    An edge belongs to some maximum matching iff it either belongs to the 
+//!    maximum matching M (obviously !), or it belongs to a cycle in the graph.
+//!    In our implementation, all cycles are found using Kosaraju's algorithm to
+//!    finding all SCCs.
 use std::cell::UnsafeCell;
 
 use crate::prelude::*;
@@ -103,7 +137,8 @@ struct ValNode {
     status: VisitStatus,
 }
 
-/// The sink is only used in the scope of the scc computation 
+/// The sink is only used in the transformed graph in which we used kosaraju's
+/// algorithm to finding all SCCs.
 #[derive(Debug)]
 struct Sink {
     /// Inbound nodes
@@ -131,14 +166,48 @@ pub struct Matching {
     pub value: isize,
 }
 
+/// The details of the algorithm used to implement the DC filtering implemented
+/// by the `VarValueGraph` propagator are given in "A filtering algorithm for 
+/// constraints of difference in CSPs" J-C. Régin, AAAI-94.
+/// 
+/// Essentially, the algorithm operates in two phases: 
+/// 
+/// 1. A quick feasibility check is performed. That one states that for a 
+///    solution to exist for all different, one must be able to find a maximum
+///    matching between variables and their domain values in the var value 
+///    bi-partite graph. In the event where no maximum matching exists that 
+///    covers all variables, the all different constraint simply cant be satisfied.
+/// 
+/// 2. When it is known that the constraint is satisfiable, a filtering check
+///    is carried out which can prune away the values having no support from
+///    variable domains. That filtering uses Berge's theorem which states that
+///    an edge belongs to **some** but not all maximum matching iff, for an
+///    arbitrary matching M, it belongs to either an even length alternating 
+///    path that starts at an  M-free vertex (case 1), or an even length 
+///    alternating cycle (case 2).
+///    In 1994, Regin proposed to treat both cases efficiently trough a simple
+///    graph transformation where:
+///      
+///       - Variables have an inbound edge from their matched value in M and an 
+///         outbound edge towards the other. 
+///       
+///       - Value nodes have an inbound edge from the sink if they belong to M
+///         and an outbound edhe towards the sink if they dont.
+///       
+///    Thanks to this transformation, both case reduce to the following statement.
+///    An edge belongs to some maximum matching iff it either belongs to the 
+///    maximum matching M (obviously !), or it belongs to a cycle in the graph.
+///    In our implementation, all cycles are found using Kosaraju's algorithm to
+///    finding all SCCs.
+/// 
 /// This structure is used to compute (repeatedly, and incrementally) a maximum
 /// matching in the bipartite node-value graph as is required per the Regin
 /// algorithm. The algorithm in itself proceeds by a double dfs to identify
 /// the alternating and augmenting path of this bipartite graph.
 /// 
-/// The structure also contains whatever it takes to compute SSCs in the 
-/// transformed var value graph which allows to provide an efficient domain 
-/// consistent filter for the all different constraint.
+/// The structure also contains whatever it takes to transform the graph and 
+/// find all SSCs in it as a means to compute an efficient domain consistent 
+/// filter for the all different constraint.
 pub struct VarValueGraph {
     /// The 'timestamp' of the max. matching. This is a kind of passive lock
     /// token which is used to detect if an information has become stale or not
@@ -374,19 +443,44 @@ impl VarValueGraph {
 // ****** SCC *********************************************************** //
 // ********************************************************************** //
 
+/// Kosaraju's algorithm identifies all SCC in a graph by performing a double
+/// DFS search in the graph. This status acts as a marker to tell whether a
+/// node is open to being visited, if its successors have already been pushed
+/// down the stack or if the complete subtree behind it has been visited.
+/// 
+/// # Note: 
+/// When a node is closed, the node id inside of the closed status corresponds
+/// to the root of the dfs exploration which led to that node's closure. In
+/// the context of SCC, this node identifier acts as an SCC identity.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 enum VisitStatus {
+    /// The status of a node whose sucessors have not been pushed down the 
+    /// stack. Whenever a node wih this status is encountered during DFS, it 
+    /// must be visited (expanded = successors pushed on the stack).
     NotVisited,
+    /// A node whose visitor have already been pushed on the stack for 
+    /// exploration. When such a node is encountered during exploration, 
+    /// there is no need to push it on the stack again.
     Visited,
+    /// The status of a node whose complete subtree has been explored.
     /// node-id is the root of the dfs exploration that closed this node
     Closed(NodeId),
 }
 
-/// Polymorphic node identifier
+/// Polymorphic node identifier.
+/// 
+/// The VarValueGraph uses three distinct types of nodes when computing the 
+/// maximum matching (which is simpler). However, these nodes along with the 
+/// sink have to be considered indistinct when computing the SCC of the 
+/// transformed graph. This polymorphic nodeid makes for an easy manipulation of
+/// these different kind of nodes in an uniform way.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 enum NodeId {
+    /// Uniquely identifies a variable node
     VarNode(VarNodeId),
+    /// Uniquely identifies a value node
     ValNode(ValNodeId),
+    /// Uniquely identifies the sink of the transformed graph.
     Sink,
 }
 
@@ -482,7 +576,8 @@ impl VarValueGraph {
         self._sink.inbound.clear();
         self._sink.outbound.clear();
     }
-
+    /// Lists the neighbors of the node identified by `id` which are connected
+    /// to `id` with an arc directed towards `id`
     fn inbound(&self, id: NodeId) -> &[NodeId] {
         match id {
             NodeId::VarNode(id) => &self.variables[id.0].inbound,
@@ -490,6 +585,8 @@ impl VarValueGraph {
             NodeId::Sink => &self._sink.inbound,
         }
     }
+    /// Lists the neighbors of the node identified by `id` which are connected
+    /// to `id` with an arc leaving `id` towards these other nodes
     fn outbound(&self, id: NodeId) -> &[NodeId] {
         match id {
             NodeId::VarNode(id) => &self.variables[id.0].outbound,
@@ -497,7 +594,7 @@ impl VarValueGraph {
             NodeId::Sink => &self._sink.outbound,
         }
     }
-
+    /// Returns the visit status of the node identified with `id`
     fn get_status(&self, id: NodeId) -> VisitStatus {
         match id {
             NodeId::VarNode(id) => self.variables[id.0].status,
@@ -505,6 +602,8 @@ impl VarValueGraph {
             NodeId::Sink => self._sink.status,
         }
     }
+    /// Updates the visit status of the node identified with `id` and assigns it
+    /// the value `status`
     fn set_status(&mut self, id: NodeId, status: VisitStatus) {
         match id {
             NodeId::VarNode(id) => self.variables[id.0].status = status,
@@ -512,7 +611,9 @@ impl VarValueGraph {
             NodeId::Sink => self._sink.status = status,
         }
     }
-
+    /// This method performs the 1st dfs traversal of the graph from the 
+    /// kosaraju's SCC algo. It traverses the graph itself and populates the 
+    /// `suffix_order` field which is used for the rest of the SCC computation.
     fn dfs1(&mut self, root_id: NodeId) {
         if self.get_status(root_id) == VisitStatus::NotVisited {
             self._stack.get_mut().push(root_id);
@@ -542,6 +643,9 @@ impl VarValueGraph {
             }
         }
     }
+    /// This method performs the 2st dfs traversal of the graph from the 
+    /// kosaraju's SCC algo. It traverses the transposed graph (which differs
+    /// from `dfs1()`)
     fn dfs2(&mut self, root_id: NodeId) {
         if self.get_status(root_id) == VisitStatus::NotVisited {
             self._stack.get_mut().push(root_id);
