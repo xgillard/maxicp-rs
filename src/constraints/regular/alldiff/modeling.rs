@@ -15,15 +15,15 @@
 
 //! This module provides the implementation of the domain consistent alldiff
 //! constraint. The algorithm used to implement that constraint is described
-//! in "A filtering algorithm for constraints of difference in CSPs" J-C. Régin, 
+//! in "A filtering algorithm for constraints of difference in CSPs" J-C. Régin,
 //! AAAI-94.
 
 use crate::prelude::*;
 
 use super::propagator::VarValueGraph;
 
-/// This constraint enforces that the the value affected to each variable be 
-/// different from the one affected to all other variables. 
+/// This constraint enforces that the the value affected to each variable be
+/// different from the one affected to all other variables.
 #[derive(Debug, Clone)]
 pub struct AllDiff {
     /// All these variables must take different values in the solution
@@ -88,7 +88,6 @@ mod test_alldiff_dc {
         cp.fix(x[0], 0).ok();
         cp.fixpoint().ok();
 
-        
         assert_eq!(2, cp.size(x[2]));
         assert_eq!(Some(3), cp.min(x[2]));
     }
@@ -163,7 +162,7 @@ mod test_alldiff_dc {
         let min = val.first().copied().unwrap();
         let max = val.last().copied().unwrap();
         let var = cp.new_int_var(min, max);
-        
+
         let mut v = val.iter().copied();
         let mut k = v.next();
         for i in min..=max {
@@ -175,5 +174,4 @@ mod test_alldiff_dc {
         }
         var
     }
-
 }

@@ -20,8 +20,8 @@ use crate::prelude::*;
 /// This constraint enforces that sum(terms) == y
 #[derive(Debug, Clone)]
 pub struct IsSum {
-    y: Variable, 
-    terms: Vec<Variable>
+    y: Variable,
+    terms: Vec<Variable>,
 }
 
 impl IsSum {
@@ -71,7 +71,7 @@ mod test_sum {
         cp.install(&mut IsSum::new(y, x.clone()));
         cp.fixpoint().ok();
 
-        assert_eq!(Some(0-3), cp.min(x[0]));
+        assert_eq!(Some(0 - 3), cp.min(x[0]));
         assert_eq!(Some(0), cp.min(y));
         assert_eq!(Some(8), cp.max(y));
     }
@@ -98,6 +98,6 @@ mod test_sum {
         assert_eq!(Some(3), cp.min(x[0]));
         assert_eq!(Some(4), cp.max(x[0]));
         assert_eq!(Some(0), cp.min(x[2]));
-        assert_eq!(Some(1), cp.max(x[2]));   
+        assert_eq!(Some(1), cp.max(x[2]));
     }
 }

@@ -15,7 +15,10 @@
 
 //! This module provides the implementation of the absolute value constraint.
 
-use crate::{CPResult, CpModel, Inconsistency, ModelingConstruct, Propagator, Variable, ConstraintStore, DomainStore};
+use crate::{
+    CPResult, ConstraintStore, CpModel, DomainStore, Inconsistency, ModelingConstruct, Propagator,
+    Variable,
+};
 
 use crate::DomainCondition::*;
 

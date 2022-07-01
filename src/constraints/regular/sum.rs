@@ -190,7 +190,7 @@ mod test_sum {
         cp.install(&mut Sum::new(x.clone()));
         cp.fixpoint().ok();
 
-        assert_eq!(Some(0-3), cp.min(x[0]));
+        assert_eq!(Some(0 - 3), cp.min(x[0]));
         assert_eq!(Some(0), cp.min(y));
         assert_eq!(Some(8), cp.max(y));
     }
@@ -218,7 +218,7 @@ mod test_sum {
         assert_eq!(Some(3), cp.min(x[0]));
         assert_eq!(Some(4), cp.max(x[0]));
         assert_eq!(Some(0), cp.min(x[2]));
-        assert_eq!(Some(1), cp.max(x[2]));   
+        assert_eq!(Some(1), cp.max(x[2]));
     }
 
     #[test]
@@ -307,9 +307,7 @@ mod test_sum {
     #[test]
     fn sum9() {
         let mut cp = CpModel::default();
-        let x = vec![
-            cp.new_int_var(-5, -5)
-        ];
+        let x = vec![cp.new_int_var(-5, -5)];
 
         cp.install(&mut Sum::new(x));
         assert_eq!(Err(Inconsistency), cp.fixpoint());
@@ -317,9 +315,7 @@ mod test_sum {
     #[test]
     fn sum10() {
         let mut cp = CpModel::default();
-        let x = vec![
-            cp.new_int_var(-10, -5)
-        ];
+        let x = vec![cp.new_int_var(-10, -5)];
 
         cp.install(&mut Sum::new(x));
         assert_eq!(Err(Inconsistency), cp.fixpoint());
@@ -327,9 +323,7 @@ mod test_sum {
     #[test]
     fn sum11() {
         let mut cp = CpModel::default();
-        let mut x = vec![
-            cp.new_int_var(-2147483645, -2147483637),
-        ];
+        let mut x = vec![cp.new_int_var(-2147483645, -2147483637)];
         let y = cp.new_int_var(-2147483645, -2147483637);
 
         x.push(cp.neg(y));
@@ -339,9 +333,7 @@ mod test_sum {
     #[test]
     fn sum12() {
         let mut cp = CpModel::default();
-        let mut x = vec![
-            cp.new_int_var(-45, -37),
-        ];
+        let mut x = vec![cp.new_int_var(-45, -37)];
         let y = cp.new_int_var(-45, -3);
 
         x.push(cp.neg(y));

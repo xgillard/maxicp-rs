@@ -13,7 +13,7 @@
 // Copyright (c)  2022 by X. Gillard
 //
 
-//! This module provides the implementation of the all different constraint 
+//! This module provides the implementation of the all different constraint
 //! along with the utilities it relies on.
 
 mod modeling;

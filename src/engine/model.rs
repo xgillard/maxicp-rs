@@ -21,8 +21,8 @@ use std::collections::hash_map::Entry;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
-    DomainBroker, DomainStoreImpl, IntManager, ReversibleInt, SaveAndRestore,
-    TrailedStateManager, Variable,
+    DomainBroker, DomainStoreImpl, IntManager, ReversibleInt, SaveAndRestore, TrailedStateManager,
+    Variable,
 };
 
 use super::{CPResult, DomainStore};
@@ -292,7 +292,7 @@ impl ConstraintStore for CpModel {
                 // This block is marked unsafe because it requires two mutable
                 // borrows to self. While having a double mutable borrow to
                 // a given variable is a bad idea in general, it is ok to do it
-                // here and to do it in the way it is done. Indeed, the only 
+                // here and to do it in the way it is done. Indeed, the only
                 // possible data races concern:
                 // - scheduled ==> no conditions can happen here since all the
                 //      shceduled constraints are flushed to __propagating

@@ -306,42 +306,22 @@ impl<T: StateManager> DomainStore for DomainStoreImpl<T> {
     fn min(&self, var: Variable) -> Option<isize> {
         let vt = self.variables[var.0];
         match vt {
-            VariableType::Primitive { index:_, domain } => {
-                self.state.sparse_set_get_min(domain)
-            },
-            VariableType::NegativeView { x } => {
-                self.max(x).map(|v| -v)
-            },
-            VariableType::OffsetView { x, offset } => {
-                self.min(x).map(|v| v + offset)
-            },
-            VariableType::MultiplicationView { x, coeff } => {
-                self.min(x).map(|v| v * coeff)
-            },
-            VariableType::FlipView { x } => {
-                self.min(x).map(|v| if v == 0 { 1 } else { 0 })
-            }
+            VariableType::Primitive { index: _, domain } => self.state.sparse_set_get_min(domain),
+            VariableType::NegativeView { x } => self.max(x).map(|v| -v),
+            VariableType::OffsetView { x, offset } => self.min(x).map(|v| v + offset),
+            VariableType::MultiplicationView { x, coeff } => self.min(x).map(|v| v * coeff),
+            VariableType::FlipView { x } => self.min(x).map(|v| if v == 0 { 1 } else { 0 }),
         }
     }
 
     fn max(&self, var: Variable) -> Option<isize> {
         let vt = self.variables[var.0];
         match vt {
-            VariableType::Primitive { index:_, domain } => {
-                self.state.sparse_set_get_max(domain)
-            },
-            VariableType::NegativeView { x } => {
-                self.min(x).map(|v| -v)
-            },
-            VariableType::OffsetView { x, offset } => {
-                self.max(x).map(|v| v + offset)
-            },
-            VariableType::MultiplicationView { x, coeff } => {
-                self.max(x).map(|v| v * coeff)
-            },
-            VariableType::FlipView { x } => {
-                self.max(x).map(|v| if v == 0 { 1 } else { 0 })
-            }
+            VariableType::Primitive { index: _, domain } => self.state.sparse_set_get_max(domain),
+            VariableType::NegativeView { x } => self.min(x).map(|v| -v),
+            VariableType::OffsetView { x, offset } => self.max(x).map(|v| v + offset),
+            VariableType::MultiplicationView { x, coeff } => self.max(x).map(|v| v * coeff),
+            VariableType::FlipView { x } => self.max(x).map(|v| if v == 0 { 1 } else { 0 }),
         }
     }
 
@@ -2826,7 +2806,7 @@ mod test_domainstoreimpl_domainstore_mul_view {
         let mut ds = DefaultDomainStore::default();
         let x = ds.new_int_var(5, 10); //   5   6   7   8   9  10
         let x = ds.mul(x, -2); // -20 -18 -16 -14 -12 -10
-        assert_eq!(Ok(()), ds.remove_above(x, 3));  // nothing removed
+        assert_eq!(Ok(()), ds.remove_above(x, 3)); // nothing removed
         assert_eq!(Some(-10), ds.max(x));
     }
 }
