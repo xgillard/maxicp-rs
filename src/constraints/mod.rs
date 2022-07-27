@@ -20,8 +20,8 @@
 //! provides the implenetation of the constraints that can be installed onto the
 //! server but cannot be manipulated as 'conditions'.
 
-mod regular;
+mod plain;
 mod reified;
 
-pub use regular::*;
+pub use plain::*;
 pub use reified::*;
